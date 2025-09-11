@@ -1,0 +1,71 @@
+# 依存関係
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ビルド出力
+dist/
+build/
+out/
+*.js
+*.js.map
+*.d.ts
+*.d.ts.map
+# ただし、テストスクリプトは除外しない
+!mcp-server/scripts/*.js
+
+# TypeScript
+*.tsbuildinfo
+
+# 環境設定（機密情報を含む）
+.env
+.env.local
+.env.*.local
+
+# IDE設定
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ログファイル
+*.log
+logs/
+mcp-server.log
+
+# 一時ファイル
+temp/
+tmp/
+*.tmp
+
+# テストカバレッジ
+coverage/
+*.lcov
+.nyc_output/
+
+# OS固有ファイル
+Thumbs.db
+.DS_Store
+Desktop.ini
+
+# バックアップファイル
+*.bak
+*.backup
+
+# プロセスファイル
+*.pid
+*.seed
+*.pid.lock
+
+# セッションファイル（Codex関連）
+sessions/
+
+# 認証情報（Codexの認証ファイルは除外しない）
+# ただし、ローカルのAPIキーファイルは除外
+api-keys.json
+credentials.json

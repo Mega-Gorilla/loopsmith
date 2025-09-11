@@ -1,0 +1,26 @@
+以下のドキュメントを評価し、JSON形式で結果を返してください。
+
+評価基準と重み:
+- 完全性 ({{completeness_weight}}%): すべての要求事項がカバーされているか
+- 正確性 ({{accuracy_weight}}%): 技術的に正確か
+- 明確性 ({{clarity_weight}}%): 理解しやすいか
+- 実用性 ({{usability_weight}}%): 実装可能か
+
+評価対象ドキュメント:
+{{document_content}}
+
+以下の形式でJSONを返してください:
+{
+  "overall_score": 0-10の数値,
+  "rubric_scores": {
+    "completeness": 0-10の数値,
+    "accuracy": 0-10の数値,
+    "clarity": 0-10の数値,
+    "usability": 0-10の数値
+  },
+  "suggestions": [
+    "改善提案1",
+    "改善提案2",
+    ...
+  ]
+}
