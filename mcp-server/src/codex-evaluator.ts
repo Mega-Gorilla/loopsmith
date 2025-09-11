@@ -77,6 +77,8 @@ export class CodexEvaluator {
     return new Promise((resolve, reject) => {
       const startTime = Date.now();
       
+      console.log(`Codex評価開始 - タイムアウト設定: ${this.codexTimeout}ms (${this.codexTimeout / 1000}秒)`);
+      
       // spawnを使用してより堅牢な実行（Windows対応）
       const isWindows = process.platform === 'win32';
       const codexCommand = isWindows ? 'codex.cmd' : 'codex';
@@ -108,13 +110,39 @@ export class CodexEvaluator {
       const codexProcess = spawn(codexCommand, codexArgs, {
         shell: isWindows, // Windowsではshellをtrueに
         windowsHide: true,
-        timeout: this.codexTimeout,  // 環境変数から設定
         env: codexEnv,
         cwd: workingDirectory  // 指定されたプロジェクトパスで実行
       });
       
       let stdout = '';
       let stderr = '';
+      let processKilled = false;
+      
+      // タイムアウト処理を手動で実装
+      const timeoutId = setTimeout(() => {
+        if (!processKilled) {
+          processKilled = true;
+          console.error(`Codexプロセスがタイムアウトしました (${this.codexTimeout}ms)`);
+          codexProcess.kill('SIGTERM');
+          
+          // Windowsの場合、SIGTERMが効かない場合があるので強制終了
+          setTimeout(() => {
+            if (!codexProcess.killed) {
+              codexProcess.kill('SIGKILL');
+            }
+          }, 5000);
+          
+          reject({
+            code: -32603,
+            message: `Codex評価がタイムアウトしました (${this.codexTimeout / 1000}秒)`,
+            data: {
+              details: `処理時間が設定値 ${this.codexTimeout}ms を超過しました`,
+              timeout: this.codexTimeout,
+              retryable: true
+            }
+          });
+        }
+      }, this.codexTimeout);
       
       // 標準出力を収集（バッファサイズ制限付き）
       codexProcess.stdout.on('data', (data) => {
@@ -137,6 +165,12 @@ export class CodexEvaluator {
       
       // プロセス終了時の処理
       codexProcess.on('close', (code) => {
+        clearTimeout(timeoutId);  // タイムアウトをクリア
+        
+        if (processKilled) {
+          return;  // タイムアウトで既に処理済み
+        }
+        
         const executionTime = Date.now() - startTime;
         
         if (code !== 0) {
@@ -186,6 +220,9 @@ export class CodexEvaluator {
       
       // エラーハンドリング
       codexProcess.on('error', (error) => {
+        clearTimeout(timeoutId);  // タイムアウトをクリア
+        processKilled = true;
+        
         if (error.message.includes('ENOENT')) {
           reject({
             code: -32603,
