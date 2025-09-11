@@ -20,9 +20,12 @@ export interface EvaluationRequest {
 
 export interface EvaluationResponse {
   score: number;
-  rubric_scores: EvaluationRubric;
+  rubric_scores?: EvaluationRubric;  // オプショナル - 新形式では不要な場合がある
   pass?: boolean;  // Optional - client determines based on score >= target_score
-  suggestions: string[];
+  suggestions?: string[];  // オプショナル - 新形式ではblockersを使用
+  ready_for_implementation?: boolean;  // 実装準備完了フラグ
+  blockers?: string[];  // 実装を妨げる重大な問題
+  recommended_approach?: string;  // 複数案がある場合の推奨アプローチ
   metadata?: {
     iteration?: number;
     evaluation_time?: number;

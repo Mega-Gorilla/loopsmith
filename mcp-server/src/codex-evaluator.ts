@@ -417,17 +417,39 @@ export class CodexEvaluator {
       // JSONパース
       const parsed = JSON.parse(jsonStr);
       
-      // 結果の正規化（フィールド名の違いに対応）
-      return {
-        score: parsed.score ?? parsed.overall_score ?? 5.0,
-        rubric_scores: parsed.rubric_scores || {
+      // 結果の正規化（新旧両方のフォーマットに対応）
+      const result: any = {
+        score: parsed.score ?? parsed.overall_score ?? 5.0
+      };
+
+      // 新形式のフィールド
+      if ('ready_for_implementation' in parsed) {
+        result.ready_for_implementation = parsed.ready_for_implementation;
+      }
+      if (parsed.blockers) {
+        result.blockers = parsed.blockers;
+      }
+      if (parsed.recommended_approach) {
+        result.recommended_approach = parsed.recommended_approach;
+      }
+
+      // 旧形式のフィールド（後方互換性）
+      if (parsed.rubric_scores) {
+        result.rubric_scores = parsed.rubric_scores;
+      } else if (parsed.completeness || parsed.accuracy || parsed.clarity || parsed.usability) {
+        result.rubric_scores = {
           completeness: parsed.completeness ?? 5.0,
           accuracy: parsed.accuracy ?? 5.0,
           clarity: parsed.clarity ?? 5.0,
           usability: parsed.usability ?? 5.0
-        },
-        suggestions: parsed.suggestions || parsed.recommendations || parsed.reasons || []
-      };
+        };
+      }
+      
+      if (parsed.suggestions || parsed.recommendations || parsed.reasons) {
+        result.suggestions = parsed.suggestions || parsed.recommendations || parsed.reasons || [];
+      }
+
+      return result;
     } catch (error) {
       console.error('Codex出力の解析エラー:', error);
       console.error('生の出力（最初の500文字）:', output.substring(0, 500));

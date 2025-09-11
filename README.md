@@ -139,7 +139,16 @@ evaluate_document({
 - `project_path`: プロジェクトディレクトリパス（Codexが読み取り専用でアクセス）
 - `rubric` (非推奨): 旧評価基準フォーマット
 
-**注意**: 評価結果の`pass`フィールドはオプションです。合格判定は `score >= target_score` で行ってください。
+**評価モード**:
+- **ドキュメント評価モード** (`evaluation-prompt.txt`): ドキュメントの品質を詳細に評価
+- **実装準備判定モード** (`evaluation-prompt-v2.txt`): 実装に移れるかを判定し、ブロッカーや推奨アプローチを提示
+
+新形式のレスポンス（v2プロンプト使用時）:
+- `ready_for_implementation`: 実装に移れるか（true/false）
+- `blockers`: 実装を妨げる重大な問題のリスト
+- `recommended_approach`: 複数案がある場合の推奨アプローチ
+
+**注意**: 評価結果の`pass`フィールドはオプションです。合格判定は `score >= target_score` または `ready_for_implementation === true` で行ってください。
 
 ### ダッシュボード監視（オプション）
 
