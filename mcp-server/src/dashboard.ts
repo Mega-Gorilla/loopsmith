@@ -31,7 +31,7 @@ export class DashboardServer extends EventEmitter {
     ]
   });
 
-  constructor(port: number = 3000) {
+  constructor(port: number = parseInt(process.env.DASHBOARD_PORT || '3000')) {
     super();
     this.port = port;
     this.app = express.default();
@@ -318,7 +318,7 @@ export class DashboardServer extends EventEmitter {
 
 // スタンドアロン実行
 if (require.main === module) {
-  const dashboard = new DashboardServer(3000);
+  const dashboard = new DashboardServer();  // デフォルト値を使用（環境変数から読み取り）
   dashboard.start();
   
   // テストログ生成（デモ用）

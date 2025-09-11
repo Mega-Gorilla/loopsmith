@@ -16,7 +16,7 @@ LoopSmithは、Claude Codeが生成したドキュメントをCodex CLIで自動
 - 📁 **コンテキスト認識評価**: project_pathでプロジェクトファイルを参照した正確な評価
 - 🚀 **標準MCPプロトコル準拠**: stdio通信による標準実装
 - 🔒 **セキュアな認証**: Codex CLIの独自認証システムを使用
-- 📈 **リアルタイム監視**: ダッシュボード機能でブラウザから評価状況を監視可能（オプション）
+- 📈 **リアルタイム監視**: ダッシュボード機能でブラウザから評価状況を監視可能（MCP起動時に自動起動）
 
 ## 必要要件
 
@@ -49,9 +49,14 @@ codex login
 ```bash
 cd mcp-server
 npm install
+
+# ダッシュボード機能を使用する場合のみ必要
+npm run build
 ```
 
-**注意**: server-stdio.jsはJavaScriptファイルのため、ビルド不要でsrcディレクトリから直接実行できます。
+**注意**: 
+- server-stdio.js自体はJavaScriptファイルのため、基本機能はビルド不要
+- ダッシュボード機能（ENABLE_DASHBOARD=true）を使用する場合は、dashboard.tsのビルドが必要
 
 #### 2. Claude CodeへのMCPサーバー登録
 
@@ -61,13 +66,16 @@ npm install
 # 最小設定（絶対パス使用）
 claude mcp add loopsmith -- node "$(pwd)/mcp-server/src/server-stdio.js"
 
-# 推奨設定（環境変数込み）
+# 推奨設定（環境変数込み、ダッシュボード付き）
 claude mcp add loopsmith \
   --env USE_MOCK_EVALUATOR=false \
   --env TARGET_SCORE=8.0 \
   --env CODEX_TIMEOUT=300000 \
   --env CODEX_SUPPORTS_JSON_FORMAT=false \
   --env EVALUATION_MODE=flexible \
+  --env ENABLE_DASHBOARD=true \
+  --env DASHBOARD_PORT=3000 \
+  --env AUTO_OPEN_BROWSER=true \
   -- node "$(pwd)/mcp-server/src/server-stdio.js"
 ```
 
@@ -77,20 +85,25 @@ claude mcp add loopsmith \
 # 最小設定（絶対パス使用）
 claude mcp add loopsmith -- node "$PWD\mcp-server\src\server-stdio.js"
 
-# 推奨設定（環境変数込み）
+# 推奨設定（環境変数込み、ダッシュボード付き）
 claude mcp add loopsmith `
   --env USE_MOCK_EVALUATOR=false `
   --env TARGET_SCORE=8.0 `
   --env CODEX_TIMEOUT=300000 `
   --env CODEX_SUPPORTS_JSON_FORMAT=false `
   --env EVALUATION_MODE=flexible `
+  --env ENABLE_DASHBOARD=true `
+  --env DASHBOARD_PORT=3000 `
+  --env AUTO_OPEN_BROWSER=true `
   -- node "$PWD\mcp-server\src\server-stdio.js"
 ```
 
 **注意**: 
-- src/server-stdio.jsを直接使用（ビルド不要）
+- src/server-stdio.jsを直接使用（stdioサーバーはビルド不要）
+- ダッシュボード機能を使用する場合は事前にビルドが必要：`npm run build`
 - 相対パスではなく絶対パスの使用を推奨します
 - `EVALUATION_MODE=flexible`で柔軟な評価モードを有効化
+- ダッシュボードはClaude Code起動時に自動的にブラウザで開きます
 
 #### 3. 接続確認
 
@@ -160,19 +173,43 @@ Codexが自由に追加する可能性のあるフィールド:
 - **flexible** (推奨): Codexの自然な出力形式を受け入れ、詳細な分析を保持
 - **strict**: JSON形式を厳密に要求（後方互換性用）
 
-### ダッシュボード監視（オプション）
+### ダッシュボード監視
 
-リアルタイムで評価状況を監視したい場合（WebSocketサーバーとは独立動作）：
+#### 自動起動（デフォルト）
+
+MCPサーバー起動時にダッシュボードが自動的に起動し、ブラウザが開きます：
 
 ```bash
-# 統合サーバーの起動（MCPサーバー + ダッシュボード）
+# Claude Code登録時にダッシュボード設定を含める
+claude mcp add loopsmith \
+  --env ENABLE_DASHBOARD=true \
+  --env DASHBOARD_PORT=3000 \
+  --env AUTO_OPEN_BROWSER=true \
+  -- node "$(pwd)/mcp-server/src/server-stdio.js"
+```
+
+- **ENABLE_DASHBOARD**: ダッシュボードの自動起動（デフォルト: true）
+- **DASHBOARD_PORT**: ダッシュボードのポート（デフォルト: 3000）
+- **AUTO_OPEN_BROWSER**: ブラウザの自動起動（デフォルト: true）
+
+ダッシュボードを無効にする場合：
+```bash
+claude mcp add loopsmith \
+  --env ENABLE_DASHBOARD=false \
+  -- node "$(pwd)/mcp-server/src/server-stdio.js"
+```
+
+#### 手動起動（スタンドアロン）
+
+ダッシュボードのみを起動したい場合：
+
+```bash
 cd mcp-server
 npm run build
-npm run start:integrated
+npm run dashboard
 
 # ブラウザでアクセス
-# http://localhost:3000 （デフォルト）
-# DASHBOARD_PORTで変更可能
+# http://localhost:3000
 ```
 
 ## 設定
@@ -193,7 +230,9 @@ npm run start:integrated
 | `CODEX_TIMEOUT` | Codexタイムアウト時間（ミリ秒） | 300000 | 5分（最大30分まで設定可能） |
 | `CODEX_MAX_BUFFER` | Codex出力バッファサイズ | 20971520 | |
 | `CODEX_SUPPORTS_JSON_FORMAT` | --format jsonオプションのサポート | true | .env.exampleでは互換性のためfalse推奨 |
-| `DASHBOARD_PORT` | ダッシュボードのポート | 3000 | start:integrated使用時 |
+| `ENABLE_DASHBOARD` | ダッシュボード自動起動 | true | MCPサーバー起動時にダッシュボードを起動 |
+| `DASHBOARD_PORT` | ダッシュボードのポート | 3000 | |
+| `AUTO_OPEN_BROWSER` | ブラウザ自動起動 | true | ダッシュボード起動時にブラウザを開く |
 
 ### プロンプトのカスタマイズ
 

@@ -12,6 +12,8 @@ require('dotenv').config();
 
 const winston = require('winston');
 const path = require('path');
+const { spawn } = require('child_process');
+const http = require('http');
 
 // Configure logger
 const logger = winston.createLogger({
@@ -30,8 +32,117 @@ const logger = winston.createLogger({
 // Select evaluator based on environment variable
 const useMock = process.env.USE_MOCK_EVALUATOR === 'true';
 
+// Dashboard related variables
+let dashboardProcess = null;
+const dashboardPort = process.env.DASHBOARD_PORT || 3000;
+
+// Function to check if port is available
+async function isPortAvailable(port) {
+  return new Promise((resolve) => {
+    const server = http.createServer();
+    server.once('error', () => resolve(false));
+    server.once('listening', () => {
+      server.close();
+      resolve(true);
+    });
+    server.listen(port);
+  });
+}
+
+// Function to wait for dashboard to be ready
+async function waitForDashboard(port, maxRetries = 30) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      await new Promise((resolve, reject) => {
+        const req = http.get(`http://localhost:${port}/health`, (res) => {
+          if (res.statusCode === 200) {
+            resolve();
+          } else {
+            reject(new Error('Not ready'));
+          }
+        });
+        req.on('error', reject);
+        req.setTimeout(1000);
+      });
+      return true;
+    } catch {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+  return false;
+}
+
+// Function to open browser
+function openBrowser(url) {
+  const platform = process.platform;
+  let command;
+  
+  if (platform === 'win32') {
+    command = 'start';
+  } else if (platform === 'darwin') {
+    command = 'open';
+  } else {
+    command = 'xdg-open';
+  }
+  
+  spawn(command, [url], { 
+    shell: true,
+    detached: true,
+    stdio: 'ignore'
+  }).unref();
+}
+
+// Function to launch dashboard
+async function launchDashboard() {
+  try {
+    // Check if port is available
+    const portAvailable = await isPortAvailable(dashboardPort);
+    if (!portAvailable) {
+      console.error(`Dashboard port ${dashboardPort} is already in use`);
+      return;
+    }
+    
+    // Launch dashboard process
+    console.error(`Launching dashboard on port ${dashboardPort}...`);
+    
+    const dashboardScript = path.join(__dirname, '../dist/dashboard.js');
+    dashboardProcess = spawn('node', [dashboardScript], {
+      env: { ...process.env, DASHBOARD_PORT: dashboardPort },
+      detached: false,
+      stdio: 'ignore'
+    });
+    
+    dashboardProcess.on('error', (err) => {
+      console.error('Failed to start dashboard:', err);
+    });
+    
+    // Wait for dashboard to be ready
+    const ready = await waitForDashboard(dashboardPort);
+    if (ready) {
+      const dashboardUrl = `http://localhost:${dashboardPort}`;
+      console.error(`Dashboard ready at ${dashboardUrl}`);
+      
+      // Auto-open browser if enabled
+      if (process.env.AUTO_OPEN_BROWSER !== 'false') {
+        console.error('Opening dashboard in browser...');
+        openBrowser(dashboardUrl);
+      }
+    } else {
+      console.error('Dashboard failed to start within timeout');
+    }
+  } catch (error) {
+    console.error('Error launching dashboard:', error);
+  }
+}
+
 async function main() {
   try {
+    // Debug: Log environment variables
+    console.error('Environment variables:');
+    console.error('  ENABLE_DASHBOARD:', process.env.ENABLE_DASHBOARD);
+    console.error('  DASHBOARD_PORT:', process.env.DASHBOARD_PORT);
+    console.error('  AUTO_OPEN_BROWSER:', process.env.AUTO_OPEN_BROWSER);
+    
     // Dynamic import of ESM modules
     const { Server } = await import('@modelcontextprotocol/sdk/server/index.js');
     const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js');
@@ -203,15 +314,28 @@ async function main() {
     console.error('MCP Server started (stdio transport)');
     console.error(`Using ${useMock ? 'mock' : 'real'} Codex evaluator`);
     
+    // Launch dashboard if enabled
+    if (process.env.ENABLE_DASHBOARD !== 'false') {
+      await launchDashboard();
+    }
+    
     // Handle graceful shutdown
     process.on('SIGINT', async () => {
       logger.info('Shutting down MCP server...');
+      if (dashboardProcess) {
+        console.error('Shutting down dashboard...');
+        dashboardProcess.kill();
+      }
       await server.close();
       process.exit(0);
     });
 
     process.on('SIGTERM', async () => {
       logger.info('Shutting down MCP server...');
+      if (dashboardProcess) {
+        console.error('Shutting down dashboard...');
+        dashboardProcess.kill();
+      }
       await server.close();
       process.exit(0);
     });
