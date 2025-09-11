@@ -13,10 +13,20 @@ export class CodexEvaluator {
   private maxRetries = 2;
   private retryDelay = 1000; // 初期遅延1秒
   private promptTemplate: string | null = null;
+  private codexTimeout: number;
+  private codexMaxBuffer: number;
+  private targetScore: number;
+
+  constructor() {
+    // 環境変数から設定を読み込み
+    this.codexTimeout = parseInt(process.env.CODEX_TIMEOUT || '120000');
+    this.codexMaxBuffer = parseInt(process.env.CODEX_MAX_BUFFER || '20971520');
+    this.targetScore = parseFloat(process.env.TARGET_SCORE || '8.0');
+  }
 
   async evaluate(request: EvaluationRequest): Promise<EvaluationResponse> {
     const rubric = request.rubric || this.defaultRubric;
-    const targetScore = request.target_score || 8.0;
+    const targetScore = request.target_score || this.targetScore;
     
     // 評価プロンプトの構築
     const evaluationPrompt = this.buildEvaluationPrompt(request.content, rubric);
@@ -66,14 +76,22 @@ export class CodexEvaluator {
       const codexCommand = isWindows ? 'codex.cmd' : 'codex';
       
       // Codex CLIの最新形式に対応
-      const codexProcess = spawn(codexCommand, [
+      const codexArgs = [
         'exec',
         '--full-auto',  // フルオートモードで実行
         '--skip-git-repo-check'  // Gitリポジトリチェックをスキップ
-      ], {
+      ];
+      
+      // --format jsonオプションが利用可能な場合は追加
+      // （Codex CLIのバージョンによってはサポートされていない可能性がある）
+      if (process.env.CODEX_SUPPORTS_JSON_FORMAT !== 'false') {
+        codexArgs.push('--format', 'json');
+      }
+      
+      const codexProcess = spawn(codexCommand, codexArgs, {
         shell: isWindows, // Windowsではshellをtrueに
         windowsHide: true,
-        timeout: 120000, // 120秒タイムアウト
+        timeout: this.codexTimeout,  // 環境変数から設定
         env: { ...process.env },
         cwd: process.cwd()  // 作業ディレクトリを明示的に設定
       });
@@ -81,9 +99,14 @@ export class CodexEvaluator {
       let stdout = '';
       let stderr = '';
       
-      // 標準出力を収集
+      // 標準出力を収集（バッファサイズ制限付き）
       codexProcess.stdout.on('data', (data) => {
-        stdout += data.toString();
+        const chunk = data.toString();
+        if (stdout.length + chunk.length <= this.codexMaxBuffer) {
+          stdout += chunk;
+        } else {
+          console.warn('出力バッファが上限に達しました');
+        }
       });
       
       // エラー出力を収集
@@ -235,61 +258,122 @@ export class CodexEvaluator {
 
   private parseCodexOutput(output: string): any {
     try {
-      // 改善されたJSON抽出ロジック
-      // 1. 先頭の非JSON文字を除去
-      const cleanOutput = output.trim();
+      // Codexの出力から必要な情報を抽出
+      console.log('Codex出力解析中...');
       
-      // 2. 複数のJSON抽出戦略を試行
+      // 1. Codexのメタデータ行を除去（[timestamp]で始まる行）
+      const lines = output.split('\n');
+      const contentLines = lines.filter(line => 
+        !line.startsWith('[20') && // タイムスタンプ
+        !line.startsWith('--------') &&
+        !line.startsWith('workdir:') &&
+        !line.startsWith('model:') &&
+        !line.startsWith('provider:') &&
+        !line.startsWith('approval:') &&
+        !line.startsWith('sandbox:') &&
+        !line.startsWith('reasoning') &&
+        !line.startsWith('User instructions:') &&
+        !line.startsWith('thinking') &&
+        !line.startsWith('**') &&
+        !line.startsWith('tokens used:') &&
+        !line.startsWith('Reading prompt')
+      );
+      
+      const cleanOutput = contentLines.join('\n').trim();
+      
+      // 2. JSON部分を抽出
       let jsonStr: string | null = null;
       
-      // 戦略1: 完全なJSONブロックを探す（最初の{から対応する}まで）
-      const startIdx = cleanOutput.indexOf('{');
-      if (startIdx !== -1) {
-        let depth = 0;
-        let endIdx = -1;
-        let inString = false;
-        let escapeNext = false;
-        
-        for (let i = startIdx; i < cleanOutput.length; i++) {
-          const char = cleanOutput[i];
+      // 最後の "codex" マーカー以降のコンテンツを探す
+      const codexMarkerIndex = output.lastIndexOf('] codex\n');
+      if (codexMarkerIndex !== -1) {
+        const afterCodex = output.substring(codexMarkerIndex + 8); // "] codex\n" の長さ
+        const jsonStart = afterCodex.indexOf('{');
+        if (jsonStart !== -1) {
+          // JSON終了位置を見つける
+          let depth = 0;
+          let endIdx = -1;
+          let inString = false;
+          let escapeNext = false;
           
-          if (escapeNext) {
-            escapeNext = false;
-            continue;
-          }
-          
-          if (char === '\\') {
-            escapeNext = true;
-            continue;
-          }
-          
-          if (char === '"' && !escapeNext) {
-            inString = !inString;
-            continue;
-          }
-          
-          if (!inString) {
-            if (char === '{') depth++;
-            if (char === '}') {
-              depth--;
-              if (depth === 0) {
-                endIdx = i;
-                break;
+          for (let i = jsonStart; i < afterCodex.length; i++) {
+            const char = afterCodex[i];
+            
+            if (escapeNext) {
+              escapeNext = false;
+              continue;
+            }
+            
+            if (char === '\\') {
+              escapeNext = true;
+              continue;
+            }
+            
+            if (char === '"' && !escapeNext) {
+              inString = !inString;
+              continue;
+            }
+            
+            if (!inString) {
+              if (char === '{') depth++;
+              if (char === '}') {
+                depth--;
+                if (depth === 0) {
+                  endIdx = i;
+                  break;
+                }
               }
             }
           }
-        }
-        
-        if (endIdx !== -1) {
-          jsonStr = cleanOutput.substring(startIdx, endIdx + 1);
+          
+          if (endIdx !== -1) {
+            jsonStr = afterCodex.substring(jsonStart, endIdx + 1);
+          }
         }
       }
       
-      // 戦略2: 正規表現によるフォールバック
+      // フォールバック: 全体から最初のJSONを探す
       if (!jsonStr) {
-        const jsonMatch = cleanOutput.match(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/);
-        if (jsonMatch) {
-          jsonStr = jsonMatch[0];
+        const jsonStart = cleanOutput.indexOf('{');
+        if (jsonStart !== -1) {
+          let depth = 0;
+          let endIdx = -1;
+          let inString = false;
+          let escapeNext = false;
+          
+          for (let i = jsonStart; i < cleanOutput.length; i++) {
+            const char = cleanOutput[i];
+            
+            if (escapeNext) {
+              escapeNext = false;
+              continue;
+            }
+            
+            if (char === '\\') {
+              escapeNext = true;
+              continue;
+            }
+            
+            if (char === '"' && !escapeNext) {
+              inString = !inString;
+              continue;
+            }
+            
+            if (!inString) {
+              if (char === '{') depth++;
+              if (char === '}') {
+                depth--;
+                if (depth === 0) {
+                  endIdx = i;
+                  break;
+                }
+              }
+            }
+          }
+          
+          if (endIdx !== -1) {
+            jsonStr = cleanOutput.substring(jsonStart, endIdx + 1);
+          }
         }
       }
       
@@ -300,20 +384,20 @@ export class CodexEvaluator {
       // JSONパース
       const parsed = JSON.parse(jsonStr);
       
-      // 結果の正規化
+      // 結果の正規化（フィールド名の違いに対応）
       return {
-        score: parsed.overall_score ?? parsed.score ?? 0,
+        score: parsed.score ?? parsed.overall_score ?? 5.0,
         rubric_scores: parsed.rubric_scores || {
-          completeness: parsed.completeness ?? 0,
-          accuracy: parsed.accuracy ?? 0,
-          clarity: parsed.clarity ?? 0,
-          usability: parsed.usability ?? 0
+          completeness: parsed.completeness ?? 5.0,
+          accuracy: parsed.accuracy ?? 5.0,
+          clarity: parsed.clarity ?? 5.0,
+          usability: parsed.usability ?? 5.0
         },
-        suggestions: parsed.suggestions || parsed.improvements || []
+        suggestions: parsed.suggestions || parsed.recommendations || parsed.reasons || []
       };
     } catch (error) {
       console.error('Codex出力の解析エラー:', error);
-      console.error('生の出力（最初の200文字）:', output.substring(0, 200));
+      console.error('生の出力（最初の500文字）:', output.substring(0, 500));
       
       // エラーを再スロー（呼び出し元で処理）
       throw error;

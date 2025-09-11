@@ -1,28 +1,28 @@
-// 環境変数に基づいて評価器を選択
+// 統合サーバー: MCPサーバー + ダッシュボード
 import { CodexEvaluator as RealCodexEvaluator } from './codex-evaluator';
 import { CodexEvaluatorMock } from './codex-evaluator-mock';
+import { EvaluationRequest, MCPMessage } from './types';
+import * as winston from 'winston';
+import * as dotenv from 'dotenv';
+import * as WebSocket from 'ws';
+import { DashboardServer } from './dashboard';
 
-// USE_MOCK_EVALUATOR環境変数でモック/本番を切り替え（デフォルトは本番）
+dotenv.config();
+
+// USE_MOCK_EVALUATOR環境変数でモック/本番を切り替え
 const useMock = process.env.USE_MOCK_EVALUATOR === 'true';
 const CodexEvaluator = useMock ? CodexEvaluatorMock : RealCodexEvaluator;
 
 if (useMock) {
   console.log('⚠️  モック評価器を使用しています (USE_MOCK_EVALUATOR=true)');
 }
-import { EvaluationRequest, MCPMessage } from './types';
-import * as winston from 'winston';
-import * as dotenv from 'dotenv';
-import * as WebSocket from 'ws';
 
-dotenv.config();
-
-// ロガー設定（APIキーマスキング付き）
+// ロガー設定
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.printf(({ timestamp, level, message, ...meta }) => {
-      // APIキーをマスク
       if (typeof message === 'string') {
         message = message.replace(/OPENAI_API_KEY=[\w-]+/g, 'OPENAI_API_KEY=[REDACTED]');
       }
@@ -35,19 +35,32 @@ const logger = winston.createLogger({
   ]
 });
 
-class CodexMCPServer {
+class IntegratedServer {
   private wss!: WebSocket.Server;
   private evaluator: InstanceType<typeof CodexEvaluator>;
   private clients: Map<WebSocket, any> = new Map();
+  private dashboard: DashboardServer;
+  private currentEvaluation: any = null;
 
   constructor() {
     this.evaluator = new CodexEvaluator();
     
+    // ダッシュボードサーバー初期化
+    const dashboardPort = parseInt(process.env.DASHBOARD_PORT || '3000');
+    this.dashboard = new DashboardServer(dashboardPort);
+    
+    // ダッシュボードを起動
+    this.dashboard.start();
+    
+    // MCPサーバーを起動
     this.startWebSocketServer();
   }
 
   private async handleMessage(ws: WebSocket, message: MCPMessage) {
     logger.debug('受信メッセージ:', message);
+    
+    // ダッシュボードにログ送信
+    this.dashboard.logMessage('info', `MCPメッセージ受信: ${message.method || 'unknown'}`);
 
     if (!message.method) {
       return;
@@ -61,7 +74,7 @@ class CodexMCPServer {
           result: {
             protocolVersion: '2024-11-05',
             serverInfo: {
-              name: 'codex-evaluator',
+              name: 'codex-evaluator-with-dashboard',
               version: '1.0.0'
             },
             capabilities: {
@@ -110,7 +123,7 @@ class CodexMCPServer {
               },
               {
                 name: 'get_improvement_suggestions',
-                description: '改善提案を取得（オプション）',
+                description: '改善提案を取得',
                 inputSchema: {
                   type: 'object',
                   properties: {
@@ -144,6 +157,8 @@ class CodexMCPServer {
     const { name, arguments: args } = message.params || {};
       
     logger.info(`ツール呼び出し: ${name}`);
+    this.dashboard.logMessage('info', `ツール呼び出し: ${name}`);
+    
     if (logger.level === 'debug') {
       logger.debug('引数:', args);
     }
@@ -152,22 +167,46 @@ class CodexMCPServer {
       switch (name) {
         case 'evaluate_document': {
           const evalRequest: EvaluationRequest = args as EvaluationRequest;
-          const result = await this.evaluator.evaluate(evalRequest);
           
-          logger.info(`評価完了: スコア=${result.score}, 合格=${result.pass}`);
+          // ダッシュボードに評価開始を通知
+          this.dashboard.startEvaluation(evalRequest.content);
           
-          this.sendMessage(ws, {
-            jsonrpc: '2.0',
-            id: message.id,
-            result: {
-              content: [
-                {
-                  type: 'text',
-                  text: JSON.stringify(result, null, 2)
-                }
-              ]
+          // 進捗を定期的に更新
+          let progress = 0;
+          const progressInterval = setInterval(() => {
+            progress += 10;
+            if (progress <= 90) {
+              this.dashboard.updateProgress(progress);
             }
-          });
+          }, 2000);
+          
+          try {
+            const result = await this.evaluator.evaluate(evalRequest);
+            
+            clearInterval(progressInterval);
+            
+            // ダッシュボードに評価完了を通知
+            this.dashboard.completeEvaluation(result);
+            
+            logger.info(`評価完了: スコア=${result.score}, 合格=${result.pass}`);
+            
+            this.sendMessage(ws, {
+              jsonrpc: '2.0',
+              id: message.id,
+              result: {
+                content: [
+                  {
+                    type: 'text',
+                    text: JSON.stringify(result, null, 2)
+                  }
+                ]
+              }
+            });
+          } catch (error: any) {
+            clearInterval(progressInterval);
+            this.dashboard.errorEvaluation(error);
+            throw error;
+          }
           break;
         }
 
@@ -176,6 +215,8 @@ class CodexMCPServer {
             args.content as string,
             args.previous_score as number
           );
+          
+          this.dashboard.logMessage('info', `改善提案生成完了: ${suggestions.length}件`);
           
           this.sendMessage(ws, {
             jsonrpc: '2.0',
@@ -197,6 +238,7 @@ class CodexMCPServer {
       }
     } catch (error: any) {
       logger.error(`ツール実行エラー: ${error.message}`);
+      this.dashboard.logMessage('error', `ツール実行エラー: ${error.message}`);
       this.sendError(ws, message.id, error.code || -32603, error.message || 'ツール実行に失敗しました', error.data);
     }
   }
@@ -231,6 +273,7 @@ class CodexMCPServer {
 
     this.wss.on('connection', (ws: WebSocket) => {
       logger.info('新しいクライアント接続');
+      this.dashboard.logMessage('info', 'MCPクライアント接続');
       this.clients.set(ws, {});
 
       ws.on('message', async (data: WebSocket.Data) => {
@@ -239,25 +282,28 @@ class CodexMCPServer {
           await this.handleMessage(ws, message);
         } catch (error: any) {
           logger.error('メッセージ処理エラー:', error);
+          this.dashboard.logMessage('error', `メッセージ処理エラー: ${error.message}`);
           this.sendError(ws, null, -32700, 'Parse error');
         }
       });
 
       ws.on('close', () => {
         logger.info('クライアント切断');
+        this.dashboard.logMessage('info', 'MCPクライアント切断');
         this.clients.delete(ws);
       });
 
       ws.on('error', (error: Error) => {
         logger.error('WebSocketエラー:', error);
+        this.dashboard.logMessage('error', `WebSocketエラー: ${error.message}`);
       });
     });
 
     logger.info(`MCPサーバー起動: ws://localhost:${port}/mcp`);
+    this.dashboard.logMessage('success', `MCPサーバー起動: ws://localhost:${port}/mcp`);
   }
 
   private async generateSuggestions(content: string, previousScore: number): Promise<string[]> {
-    // 簡易的な改善提案生成
     const suggestions: string[] = [];
     
     if (previousScore < 5) {
@@ -279,15 +325,18 @@ class CodexMCPServer {
     return suggestions;
   }
 
-  public shutdown() {
+  public async shutdown() {
     logger.info('サーバーシャットダウン中...');
+    this.dashboard.logMessage('warning', 'サーバーシャットダウン開始');
+    
     this.clients.forEach((_, ws) => ws.close());
     this.wss.close();
+    this.dashboard.stop();
   }
 }
 
 // サーバー起動
-const server = new CodexMCPServer();
+const server = new IntegratedServer();
 
 // グレースフルシャットダウン
 process.on('SIGINT', async () => {
@@ -300,4 +349,4 @@ process.on('SIGTERM', async () => {
   process.exit(0);
 });
 
-export default CodexMCPServer;
+export default IntegratedServer;

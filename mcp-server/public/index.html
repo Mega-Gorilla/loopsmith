@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LoopSmith Monitor - リアルタイム評価監視ダッシュボード</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- ヘッダー -->
+        <header class="header">
+            <div class="header-left">
+                <h1>🔄 LoopSmith Monitor</h1>
+                <span class="subtitle">Codex評価監視ダッシュボード</span>
+            </div>
+            <div class="header-right">
+                <div class="status-indicator">
+                    <span class="status-dot" id="connectionStatus"></span>
+                    <span id="connectionText">未接続</span>
+                </div>
+                <div class="server-info">
+                    <span id="serverTime"></span>
+                </div>
+            </div>
+        </header>
+
+        <!-- メインコンテンツ -->
+        <main class="main-content">
+            <!-- 左側パネル: 現在の評価 -->
+            <section class="panel current-evaluation">
+                <h2>📊 現在の評価</h2>
+                <div id="currentEvaluation" class="evaluation-content">
+                    <div class="no-evaluation">
+                        <p>評価待機中...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 中央パネル: ログビューア -->
+            <section class="panel logs">
+                <div class="panel-header">
+                    <h2>📝 リアルタイムログ</h2>
+                    <div class="log-controls">
+                        <button onclick="clearLogs()" class="btn btn-small">クリア</button>
+                        <label>
+                            <input type="checkbox" id="autoScroll" checked>
+                            自動スクロール
+                        </label>
+                        <select id="logFilter" onchange="filterLogs()">
+                            <option value="">すべて</option>
+                            <option value="info">Info</option>
+                            <option value="warning">Warning</option>
+                            <option value="error">Error</option>
+                            <option value="success">Success</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="logContainer" class="log-container">
+                    <!-- ログエントリがここに追加される -->
+                </div>
+            </section>
+
+            <!-- 右側パネル: 統計と履歴 -->
+            <section class="panel stats-history">
+                <!-- 統計情報 -->
+                <div class="stats-section">
+                    <h2>📈 統計情報</h2>
+                    <div id="statsContainer" class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value" id="totalEvaluations">0</div>
+                            <div class="stat-label">総評価数</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="successRate">0%</div>
+                            <div class="stat-label">成功率</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="avgScore">0.0</div>
+                            <div class="stat-label">平均スコア</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="avgDuration">0s</div>
+                            <div class="stat-label">平均処理時間</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 評価履歴 -->
+                <div class="history-section">
+                    <div class="section-header">
+                        <h2>📋 評価履歴</h2>
+                        <button onclick="clearHistory()" class="btn btn-small btn-danger">履歴クリア</button>
+                    </div>
+                    <div id="historyContainer" class="history-container">
+                        <table class="history-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>時刻</th>
+                                    <th>スコア</th>
+                                    <th>状態</th>
+                                    <th>時間</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyTableBody">
+                                <!-- 履歴行がここに追加される -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- 評価詳細モーダル -->
+        <div id="evaluationModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeModal()">&times;</span>
+                <h2>評価詳細</h2>
+                <div id="modalContent">
+                    <!-- 詳細情報がここに表示される -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

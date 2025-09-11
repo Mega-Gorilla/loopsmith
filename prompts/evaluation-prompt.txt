@@ -1,0 +1,27 @@
+以下のドキュメントを評価してください。
+
+評価基準:
+- 完全性 ({{completeness_weight}}%): ドキュメントが必要な情報をすべて含んでいるか
+- 正確性 ({{accuracy_weight}}%): 技術的に正確で誤りがないか
+- 明確性 ({{clarity_weight}}%): 読みやすく理解しやすいか
+- 実用性 ({{usability_weight}}%): 実装に役立つ具体的な情報が含まれているか
+
+評価対象ドキュメント:
+{{document_content}}
+
+以下のJSON形式で評価結果を返してください:
+{
+  "score": <総合スコア 0-10>,
+  "rubric_scores": {
+    "completeness": <完全性スコア 0-10>,
+    "accuracy": <正確性スコア 0-10>,
+    "clarity": <明確性スコア 0-10>,
+    "usability": <実用性スコア 0-10>
+  },
+  "pass": <合格判定 true/false>,
+  "suggestions": [
+    "<改善提案1>",
+    "<改善提案2>",
+    ...
+  ]
+}

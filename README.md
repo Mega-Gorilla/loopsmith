@@ -36,6 +36,13 @@ npm install
 cp .env.example .env
 # .envファイルを編集して設定を調整
 
+# Codex CLIのセットアップ
+# Windows:
+npm run setup:windows
+
+# macOS/Linux:
+npm run setup:unix
+
 # Codex CLIの認証（初回のみ）
 codex login
 ```
@@ -78,9 +85,12 @@ Claude Code内で以下のコマンドを実行:
 | `MCP_PORT` | MCPサーバーのポート | 23100 |
 | `LOG_LEVEL` | ログレベル | info |
 | `MAX_ITERATIONS` | 最大改善回数 | 5 |
+| `USE_MOCK_EVALUATOR` | モック評価器を使用 | false |
 | `TARGET_SCORE` | 目標スコア | 8.0 |
 | `EVALUATION_PROMPT_PATH` | 評価プロンプトファイルパス | ../prompts/evaluation-prompt.txt |
 | `CODEX_TIMEOUT` | Codexタイムアウト時間（ミリ秒） | 120000 |
+| `CODEX_MAX_BUFFER` | Codex出力バッファサイズ | 20971520 |
+| `CODEX_SUPPORTS_JSON_FORMAT` | --format jsonオプションのサポート | true |
 
 ### プロンプトのカスタマイズ
 
@@ -132,12 +142,31 @@ node scripts/test-integration.js
 loopsmith/
 ├── mcp-server/           # MCPサーバー実装
 │   ├── src/             # TypeScriptソースコード
+│   │   ├── server.ts    # MCPサーバー本体
+│   │   ├── codex-evaluator.ts # Codex評価器
+│   │   └── codex-evaluator-mock.ts # モック評価器
 │   ├── prompts/         # 評価プロンプトテンプレート
-│   ├── scripts/         # テストスクリプト
-│   └── dist/            # ビルド出力
+│   ├── scripts/         # テスト/セットアップスクリプト
+│   └── dist/            # ビルド出力 (ギット無視)
 ├── docs/                # ドキュメント
+│   ├── architecture.md # アーキテクチャ図
+│   └── sequence-diagram.md # シーケンス図
 └── implementation-guide.md # 実装ガイド
 ```
+
+**注意**: 本プロジェクトはCommonJS形式で実装されています。
+
+## アーキテクチャ
+
+詳細なアーキテクチャ図とシーケンス図は[docs/architecture.md](docs/architecture.md)を参照してください。
+
+### 基本的な動作フロー
+
+1. **ドキュメント生成**: Claude Codeがユーザーのプロンプトからドキュメントを生成
+2. **評価要求**: MCPツール（evaluate_document）を通じて評価を要求
+3. **Codex実行**: Codex CLIがドキュメントを評価し、スコアと改善提案を返却
+4. **改善ループ**: スコアが目標値（8.0）未満の場合、自動的に改善を適用
+5. **完了**: 目標達成または最大反復回数（5回）で終了
 
 ## トラブルシューティング
 

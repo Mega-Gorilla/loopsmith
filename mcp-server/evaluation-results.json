@@ -1,0 +1,15 @@
+{
+  "score": 8.2,
+  "rubric_scores": {
+    "completeness": 10,
+    "accuracy": 8,
+    "clarity": 7,
+    "usability": 7
+  },
+  "pass": true,
+  "suggestions": [],
+  "metadata": {
+    "evaluation_time": 100,
+    "model_used": "mock-evaluator"
+  }
+}

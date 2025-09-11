@@ -69,3 +69,6 @@ sessions/
 # ただし、ローカルのAPIキーファイルは除外
 api-keys.json
 credentials.json
+
+# Claude Code設定（ローカル設定のみ）
+.claude/
