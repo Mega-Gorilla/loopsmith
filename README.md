@@ -4,15 +4,18 @@ Claude CodeとOpenAI Codexを連携させた自動ドキュメント評価・改
 
 ## 概要
 
-LoopSmithは、Claude Codeが生成したドキュメントをCodex CLIで自動評価し、品質が目標スコアに達するまで自動的に改善を繰り返すシステムです。MCP (Model Context Protocol) を使用してClaude CodeとCodexを統合しています。
+LoopSmithは、Claude Codeが生成したドキュメントをCodex CLIで自動評価し、品質が目標スコアに達するまで自動的に改善を繰り返すシステムです。MCP (Model Context Protocol) プロトコル準拠の独自WebSocketサーバーを実装し、Claude CodeとCodexを統合しています。
+
+**重要**: 本リポジトリは評価API（MCPツール）を提供します。自動改善ループの制御はClaude Code側のシステムプロンプトと会話フローで実行されます。
 
 ## 特徴
 
-- 🔄 **自動改善ループ**: 目標スコア（デフォルト8.0/10）達成まで自動的に改善
+- 🔄 **自動改善ループ**: Claude Code側で目標スコア（デフォルト8.0/10）達成まで自動的に改善を制御
 - 📊 **カスタマイズ可能な評価基準**: 完全性、正確性、明確性、実用性の4つの観点で評価
 - 🔧 **プロンプトカスタマイズ**: 評価プロンプトを外部ファイルから読み込み可能
-- 🌐 **WebSocket通信**: MCPプロトコル準拠のWebSocketサーバー
+- 🌐 **WebSocket通信**: MCPプロトコル準拠の独自実装によるWebSocketサーバー
 - 🔒 **セキュアな認証**: Codex CLIの独自認証システムを使用
+- 📈 **リアルタイム監視**: ダッシュボード機能でブラウザから評価状況を監視可能（オプション）
 
 ## 必要要件
 
@@ -33,7 +36,12 @@ cd mcp-server
 npm install
 
 # 環境設定ファイルの作成
-cp .env.example .env
+# Windows:
+copy mcp-server\.env.example mcp-server\.env
+
+# macOS/Linux:
+cp mcp-server/.env.example mcp-server/.env
+
 # .envファイルを編集して設定を調整
 
 # Codex CLIのセットアップ
@@ -76,21 +84,39 @@ Claude Code内で以下のコマンドを実行:
 「APIリファレンスドキュメント」
 ```
 
+**注意**: 評価結果には`pass`フィールドは含まれません。合格判定は `score >= target_score` で行ってください。
+
+### 4. ダッシュボード監視（オプション）
+
+リアルタイムで評価状況を監視したい場合：
+
+```bash
+# 統合サーバーの起動（MCPサーバー + ダッシュボード）
+cd mcp-server
+npm run build
+npm run start:integrated
+
+# ブラウザでアクセス
+# http://localhost:3000 （デフォルト）
+# DASHBOARD_PORTで変更可能
+```
+
 ## 設定
 
 ### 環境変数 (.env)
 
-| 変数名 | 説明 | デフォルト値 |
-|--------|------|--------------|
-| `MCP_PORT` | MCPサーバーのポート | 23100 |
-| `LOG_LEVEL` | ログレベル | info |
-| `MAX_ITERATIONS` | 最大改善回数 | 5 |
-| `USE_MOCK_EVALUATOR` | モック評価器を使用 | false |
-| `TARGET_SCORE` | 目標スコア | 8.0 |
-| `EVALUATION_PROMPT_PATH` | 評価プロンプトファイルパス | ../prompts/evaluation-prompt.txt |
-| `CODEX_TIMEOUT` | Codexタイムアウト時間（ミリ秒） | 120000 |
-| `CODEX_MAX_BUFFER` | Codex出力バッファサイズ | 20971520 |
-| `CODEX_SUPPORTS_JSON_FORMAT` | --format jsonオプションのサポート | true |
+| 変数名 | 説明 | デフォルト値 | 備考 |
+|--------|------|--------------|------|
+| `MCP_PORT` | MCPサーバーのポート | 23100 | |
+| `LOG_LEVEL` | ログレベル | info | |
+| `MAX_ITERATIONS` | 最大改善回数 | 5 | **現在サーバー側未使用**（将来拡張用） |
+| `USE_MOCK_EVALUATOR` | モック評価器を使用 | false | |
+| `TARGET_SCORE` | 目標スコア | 8.0 | |
+| `EVALUATION_PROMPT_PATH` | 評価プロンプトファイルパス | ../prompts/evaluation-prompt.txt | |
+| `CODEX_TIMEOUT` | Codexタイムアウト時間（ミリ秒） | 120000 | 10分まで延長可能 |
+| `CODEX_MAX_BUFFER` | Codex出力バッファサイズ | 20971520 | |
+| `CODEX_SUPPORTS_JSON_FORMAT` | --format jsonオプションのサポート | true | .env.exampleでは互換性のためfalse推奨 |
+| `DASHBOARD_PORT` | ダッシュボードのポート | 3000 | start:integrated使用時 |
 
 ### プロンプトのカスタマイズ
 
@@ -140,18 +166,22 @@ node scripts/test-integration.js
 
 ```
 loopsmith/
-├── mcp-server/           # MCPサーバー実装
-│   ├── src/             # TypeScriptソースコード
-│   │   ├── server.ts    # MCPサーバー本体
-│   │   ├── codex-evaluator.ts # Codex評価器
+├── mcp-server/              # MCPサーバー実装
+│   ├── src/                # TypeScriptソースコード
+│   │   ├── server.ts       # MCPサーバー本体
+│   │   ├── server-with-dashboard.ts # 統合サーバー（MCP + ダッシュボード）
+│   │   ├── dashboard.ts    # ダッシュボードサーバー
+│   │   ├── codex-evaluator.ts      # Codex評価器
 │   │   └── codex-evaluator-mock.ts # モック評価器
-│   ├── prompts/         # 評価プロンプトテンプレート
-│   ├── scripts/         # テスト/セットアップスクリプト
-│   └── dist/            # ビルド出力 (ギット無視)
-├── docs/                # ドキュメント
-│   ├── architecture.md # アーキテクチャ図
-│   └── sequence-diagram.md # シーケンス図
-└── implementation-guide.md # 実装ガイド
+│   ├── public/             # ダッシュボードWeb UI
+│   ├── prompts/            # 評価プロンプトテンプレート（ルートに移動）
+│   ├── scripts/            # テスト/セットアップスクリプト
+│   └── dist/               # ビルド出力 (ギット無視)
+├── prompts/                # 評価プロンプトテンプレート
+├── docs/                   # ドキュメント
+│   └── architecture.md     # アーキテクチャ設計書
+├── README.md               # このファイル
+└── LICENSE                 # MITライセンス
 ```
 
 **注意**: 本プロジェクトはCommonJS形式で実装されています。
