@@ -32,9 +32,10 @@ LoopSmithは、Claude Codeが生成したドキュメントをCodex CLIで自動
 git clone https://github.com/yourusername/loopsmith.git
 cd loopsmith
 
-# 依存関係のインストール
+# 依存関係のインストールとビルド
 cd mcp-server
 npm install
+npm run build  # 重要：必須のビルドステップ
 
 # Codex CLIの認証（初回のみ、必要に応じて）
 codex login
@@ -50,13 +51,14 @@ codex login
 cd mcp-server
 npm install
 
-# ダッシュボード機能を使用する場合のみ必要
+# 重要: 必ずビルドを実行してください
 npm run build
 ```
 
-**注意**: 
-- server-stdio.js自体はJavaScriptファイルのため、基本機能はビルド不要
-- ダッシュボード機能（ENABLE_DASHBOARD=true）を使用する場合は、dashboard.tsのビルドが必要
+**重要な注意事項**: 
+- **ビルドは必須です**: server-stdio.jsは`dist/codex-evaluator.js`をrequireするため、ダッシュボードの使用有無にかかわらずビルドが必要
+- ダッシュボード機能（ENABLE_DASHBOARD=true）を使用する場合は、`dist/dashboard.js`も必要
+- ビルドを忘れると`Cannot find module '../dist/codex-evaluator'`エラーが発生します
 
 #### 2. Claude CodeへのMCPサーバー登録
 
@@ -72,7 +74,6 @@ claude mcp add loopsmith \
   --env TARGET_SCORE=8.0 \
   --env CODEX_TIMEOUT=300000 \
   --env CODEX_SUPPORTS_JSON_FORMAT=false \
-  --env EVALUATION_MODE=flexible \
   --env ENABLE_DASHBOARD=true \
   --env DASHBOARD_PORT=3000 \
   --env AUTO_OPEN_BROWSER=true \
@@ -91,7 +92,6 @@ claude mcp add loopsmith `
   --env TARGET_SCORE=8.0 `
   --env CODEX_TIMEOUT=300000 `
   --env CODEX_SUPPORTS_JSON_FORMAT=false `
-  --env EVALUATION_MODE=flexible `
   --env ENABLE_DASHBOARD=true `
   --env DASHBOARD_PORT=3000 `
   --env AUTO_OPEN_BROWSER=true `
@@ -102,8 +102,8 @@ claude mcp add loopsmith `
 - src/server-stdio.jsを直接使用（stdioサーバーはビルド不要）
 - ダッシュボード機能を使用する場合は事前にビルドが必要：`npm run build`
 - 相対パスではなく絶対パスの使用を推奨します
-- `EVALUATION_MODE=flexible`で柔軟な評価モードを有効化
 - ダッシュボードはClaude Code起動時に自動的にブラウザで開きます
+- **ダッシュボード接続の注意**: DASHBOARD_PORTをデフォルトの3000から変更する場合、public/app.jsの接続先も変更が必要（現在は3000固定）
 
 #### 3. 接続確認
 
@@ -179,6 +179,8 @@ Codexが自由に追加する可能性のあるフィールド:
 
 MCPサーバー起動時にダッシュボードが自動的に起動し、ブラウザが開きます：
 
+**注意**: ダッシュボードは指定された`DASHBOARD_PORT`で動作します。ポートを変更した場合、ブラウザで正しいURLにアクセスしてください。
+
 ```bash
 # Claude Code登録時にダッシュボード設定を含める
 claude mcp add loopsmith \
@@ -222,10 +224,8 @@ npm run dashboard
 |--------|------|--------------|------|
 | `MCP_PORT` | WebSocketサーバーのポート | 23100 | レガシー実装のみ |
 | `LOG_LEVEL` | ログレベル | info | |
-| `MAX_ITERATIONS` | 最大改善回数 | 5 | **現在サーバー側未使用**（将来拡張用） |
 | `USE_MOCK_EVALUATOR` | モック評価器を使用 | false | |
 | `TARGET_SCORE` | 目標スコア | 8.0 | |
-| `EVALUATION_MODE` | 評価モード | flexible | flexible: 柔軟な形式, strict: JSON厳密 |
 | `EVALUATION_PROMPT_PATH` | 評価プロンプトファイルパス | （未指定） | 未指定時は mcp-server/prompts/evaluation-prompt.txt を自動参照 |
 | `CODEX_TIMEOUT` | Codexタイムアウト時間（ミリ秒） | 300000 | 5分（最大30分まで設定可能） |
 | `CODEX_MAX_BUFFER` | Codex出力バッファサイズ | 20971520 | |

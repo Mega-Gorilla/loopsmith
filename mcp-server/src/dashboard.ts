@@ -38,8 +38,16 @@ export class DashboardServer extends EventEmitter {
     this.server = http.createServer(this.app);
     this.io = new SocketIOServer(this.server, {
       cors: {
-        origin: "http://localhost:3000",
-        methods: ["GET", "POST"]
+        origin: (origin, callback) => {
+          // localhostからのすべてのポートを許可
+          if (!origin || origin.startsWith('http://localhost:')) {
+            callback(null, true);
+          } else {
+            callback(new Error('Not allowed by CORS'));
+          }
+        },
+        methods: ["GET", "POST"],
+        credentials: true
       }
     });
 
@@ -50,9 +58,17 @@ export class DashboardServer extends EventEmitter {
   }
 
   private setupMiddleware() {
-    // CORS設定
+    // CORS設定 - 動的ポート対応
     this.app.use(cors({
-      origin: 'http://localhost:3000'
+      origin: (origin, callback) => {
+        // localhostからのアクセスは全て許可
+        if (!origin || origin.startsWith('http://localhost:')) {
+          callback(null, true);
+        } else {
+          callback(new Error('Not allowed by CORS'));
+        }
+      },
+      credentials: true
     }));
     
     // JSON解析
@@ -100,10 +116,19 @@ export class DashboardServer extends EventEmitter {
     this.app.post('/api/event', (req, res) => {
       const { event, data, timestamp } = req.body;
       
+      // Log the event with proper timestamp
+      if (timestamp) {
+        this.addLog({
+          level: 'info',
+          message: `MCPイベント: ${event}`,
+          timestamp: new Date(timestamp)  // Convert ISO string to Date
+        });
+      }
+      
       // Handle different event types
       switch (event) {
         case 'evaluation:start':
-          this.startEvaluation(data.document);
+          this.startEvaluation(data);
           break;
         case 'evaluation:progress':
           this.updateProgress(data.progress);
@@ -171,13 +196,15 @@ export class DashboardServer extends EventEmitter {
         id: Date.now().toString(),
         startTime: new Date(),
         status: 'running',
-        document: data.document?.substring(0, 100) + '...',
+        document: data.document || 'N/A',
+        projectPath: data.projectPath,
+        targetScore: data.targetScore,
         progress: 0
       };
       this.io.emit('evaluation:started', this.currentEvaluation);
       this.addLog({
         level: 'info',
-        message: '評価を開始しました',
+        message: `評価を開始しました (目標スコア: ${data.targetScore || 8.0})`,
         timestamp: new Date()
       });
     });
@@ -240,9 +267,19 @@ export class DashboardServer extends EventEmitter {
   }
 
   private addLog(log: any) {
+    // Ensure timestamp is a valid Date object
+    let timestamp = log.timestamp;
+    if (!timestamp) {
+      timestamp = new Date();
+    } else if (typeof timestamp === 'string') {
+      timestamp = new Date(timestamp);
+    } else if (!(timestamp instanceof Date)) {
+      timestamp = new Date();
+    }
+    
     const logEntry = {
       ...log,
-      timestamp: log.timestamp || new Date(),
+      timestamp: timestamp,
       id: Date.now().toString() + Math.random()
     };
     
@@ -324,8 +361,8 @@ export class DashboardServer extends EventEmitter {
     this.emit('log', { level, message, ...meta });
   }
 
-  public startEvaluation(document: string) {
-    this.emit('evaluation:start', { document });
+  public startEvaluation(data: any) {
+    this.emit('evaluation:start', data);
   }
 
   public updateProgress(progress: number) {
@@ -345,11 +382,6 @@ export class DashboardServer extends EventEmitter {
 if (require.main === module) {
   const dashboard = new DashboardServer();  // デフォルト値を使用（環境変数から読み取り）
   dashboard.start();
-  
-  // テストログ生成（デモ用）
-  setInterval(() => {
-    dashboard.logMessage('info', `テストログ: ${new Date().toLocaleTimeString()}`);
-  }, 5000);
   
   // グレースフルシャットダウン
   process.on('SIGINT', () => {

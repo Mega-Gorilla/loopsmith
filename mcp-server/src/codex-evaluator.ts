@@ -2,6 +2,10 @@ import { spawn } from 'child_process';
 import { EvaluationRequest, EvaluationResponse, EvaluationRubric } from './types';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as dotenv from 'dotenv';
+
+// .env ファイルを読み込み
+dotenv.config();
 
 export class CodexEvaluator {
   private readonly defaultRubric: EvaluationRubric = {
@@ -197,6 +201,12 @@ export class CodexEvaluator {
             rubric_scores: evaluation.rubric_scores,
             pass: evaluation.score >= targetScore,
             suggestions: evaluation.suggestions,
+            // Codexの詳細分析を追加
+            conclusion: evaluation.conclusion,
+            rationale: evaluation.rationale,
+            analysis: evaluation.analysis,
+            recommendations: evaluation.recommendations,
+            blockers: evaluation.blockers,
             metadata: {
               evaluation_time: executionTime,
               model_used: 'codex-1',

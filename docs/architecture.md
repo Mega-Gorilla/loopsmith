@@ -98,15 +98,20 @@ graph TB
   - ドキュメント生成と改善
   - evaluate_documentツール呼び出し
   - project_pathによるコンテキスト指定
+  - 自動改善ループの制御
 
 ### 2. LoopSmith MCP Server
 - **エントリポイント**: `mcp-server/src/server-stdio.js`
 - **プロトコル**: Model Context Protocol (JSON-RPC 2.0)
 - **通信方式**: stdio (パイプ通信)
 - **主要メソッド**:
-  - `initialize`: サーバー初期化
+  - `initialize`: サーバー初期化とcapabilities設定
   - `tools/list`: ツール一覧取得
   - `tools/call`: evaluate_document実行
+- **ダッシュボード連携**:
+  - HTTPベースのIPC通信
+  - イベント送信（評価開始/進捗/完了/エラー）
+  - リアルタイム監視機能
 
 ### 3. 評価システム
 
@@ -177,6 +182,11 @@ TARGET_SCORE=8.0                   # 目標スコア
 # Codex設定
 CODEX_TIMEOUT=300000               # タイムアウト(ms)
 CODEX_SUPPORTS_JSON_FORMAT=false  # JSON形式サポート
+
+# ダッシュボード設定
+ENABLE_DASHBOARD=true              # ダッシュボード自動起動
+DASHBOARD_PORT=3000                # ダッシュボードポート
+AUTO_OPEN_BROWSER=true             # ブラウザ自動起動
 
 # プロンプト
 EVALUATION_PROMPT_PATH             # カスタムプロンプトパス
@@ -252,13 +262,27 @@ mcp-server/prompts/
 | パース失敗 | 出力形式不正 | EVALUATION_MODE=flexible 使用 |
 | コンテキスト不足 | project_path未指定 | project_path パラメータ追加 |
 
+## ダッシュボード機能
+
+### リアルタイム監視
+- **接続状態**: MCPサーバーとの接続状態をリアルタイム表示
+- **評価進捗**: 現在実行中の評価の進捗状況
+- **ログストリーム**: 評価プロセスのログをリアルタイム表示
+- **評価履歴**: 過去の評価結果一覧と詳細表示
+
+### 技術実装
+- **通信方式**: Socket.IO WebSocket + HTTP API
+- **ポート柔軟性**: 環境変数による動的ポート設定
+- **CORS対応**: localhost全ポートからのアクセスを関数ベースで動的許可（Express/Socket.IO共通）
+- **自動起動**: MCP起動時にダッシュボードとブラウザを自動起動
+
 ## 今後の拡張計画
 
 ### 実装予定機能
-- [ ] 評価履歴の保存と分析
+- [ ] 評価履歴の永続化（データベース保存）
 - [ ] 複数ドキュメントのバッチ評価
-- [ ] カスタム評価基準の定義
-- [ ] 評価結果のビジュアライゼーション
+- [ ] カスタム評価基準の定義UI
+- [ ] 評価結果の詳細分析グラフ
 
 ### アーキテクチャ改善
 - [ ] 評価結果キャッシング

@@ -35,7 +35,7 @@ const useMock = process.env.USE_MOCK_EVALUATOR === 'true';
 
 // Dashboard related variables
 let dashboardProcess = null;
-const dashboardPort = process.env.DASHBOARD_PORT || 3000;
+const dashboardPort = process.env.DASHBOARD_PORT || '3000';
 
 // Function to check if port is available
 async function isPortAvailable(port) {
