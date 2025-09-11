@@ -212,7 +212,7 @@ export class CodexEvaluator {
   private loadPromptTemplate(): string {
     // 環境変数からプロンプトファイルパスを取得
     const promptPath = process.env.EVALUATION_PROMPT_PATH || 
-                      path.join(__dirname, 'prompts/evaluation-prompt.txt');
+                      path.join(__dirname, '../prompts/evaluation-prompt.txt');
     
     try {
       // プロンプトテンプレートをキャッシュから使用またはファイルから読み込み

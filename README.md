@@ -49,8 +49,10 @@ codex login
 ```bash
 cd mcp-server
 npm install
-npm run build
+npm run build  # 重要: TypeScriptをJavaScriptにコンパイル（必須）
 ```
+
+**注意**: `npm run build`は必ず実行してください。これによりsrcディレクトリのTypeScriptファイルがdistディレクトリにコンパイルされます。
 
 #### 2. Claude CodeへのMCPサーバー登録
 
@@ -131,8 +133,13 @@ evaluate_document({
 **評価パラメータ** (evaluate_documentツール):
 - `content` (必須): 評価対象のドキュメント
 - `target_score`: 目標スコア (デフォルト: 8.0)
-- `project_path`: プロジェクトディレクトリパス（Codexが読み取り専用でアクセス）
+- `project_path`: プロジェクトディレクトリパス（Codexが読み取り専用でアクセス。未指定時はMCPプロセスのCWDを使用）
 - `evaluation_mode`: 評価モード ('flexible' | 'strict', デフォルト: 'flexible')
+- `weights` (非推奨): 評価基準の重み（0-100の配点）
+  - `completeness`: 完全性 (デフォルト: 30)
+  - `accuracy`: 正確性 (デフォルト: 30)
+  - `clarity`: 明確性 (デフォルト: 20)
+  - `usability`: 実用性 (デフォルト: 20)
 
 **評価レスポンス** (柔軟な形式):
 必須フィールド:
@@ -181,7 +188,7 @@ npm run start:integrated
 | `USE_MOCK_EVALUATOR` | モック評価器を使用 | false | |
 | `TARGET_SCORE` | 目標スコア | 8.0 | |
 | `EVALUATION_MODE` | 評価モード | flexible | flexible: 柔軟な形式, strict: JSON厳密 |
-| `EVALUATION_PROMPT_PATH` | 評価プロンプトファイルパス | （未指定） | 既定: mcp-server/prompts/evaluation-prompt.txt |
+| `EVALUATION_PROMPT_PATH` | 評価プロンプトファイルパス | （未指定） | 未指定時は mcp-server/prompts/evaluation-prompt.txt を自動参照 |
 | `CODEX_TIMEOUT` | Codexタイムアウト時間（ミリ秒） | 300000 | 5分（最大30分まで設定可能） |
 | `CODEX_MAX_BUFFER` | Codex出力バッファサイズ | 20971520 | |
 | `CODEX_SUPPORTS_JSON_FORMAT` | --format jsonオプションのサポート | true | .env.exampleでは互換性のためfalse推奨 |

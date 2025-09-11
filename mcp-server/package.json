@@ -2,10 +2,7 @@
   "name": "loopsmith-mcp-server",
   "version": "1.0.0",
   "description": "LoopSmith MCP Server for Claude Code × Codex Integration",
-  "main": "dist/index.js",
-  "bin": {
-    "loopsmith-mcp": "./dist/index.js"
-  },
+  "main": "dist/server-stdio.js",
   "engines": {
     "node": ">=18.0.0"
   },
