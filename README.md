@@ -130,25 +130,27 @@ evaluate_document({
 
 **評価パラメータ** (evaluate_documentツール):
 - `content` (必須): 評価対象のドキュメント
-- `weights` (推奨): 評価基準の重み
-  - `completeness`: 完全性の重み (0-100, デフォルト: 30)
-  - `accuracy`: 正確性の重み (0-100, デフォルト: 30)
-  - `clarity`: 明確性の重み (0-100, デフォルト: 20)
-  - `usability`: 実用性の重み (0-100, デフォルト: 20)
 - `target_score`: 目標スコア (デフォルト: 8.0)
 - `project_path`: プロジェクトディレクトリパス（Codexが読み取り専用でアクセス）
-- `rubric` (非推奨): 旧評価基準フォーマット
+- `evaluation_mode`: 評価モード ('flexible' | 'strict', デフォルト: 'flexible')
+
+**評価レスポンス** (柔軟な形式):
+必須フィールド:
+- `ready_for_implementation`: 実装に移れるか（true/false）
+- `score`: 総合評価スコア（0-10）
+
+Codexが自由に追加する可能性のあるフィールド:
+- `conclusion`: 結論の詳細説明
+- `rationale`: 評価の根拠
+- `analysis`: 詳細な分析内容
+- `recommendations`: 改善提案や推奨事項
+- `blockers`: 実装を妨げる問題
+- `technical_notes`: 技術的な注記
+- その他、評価内容に応じた情報
 
 **評価モード**:
-- **ドキュメント評価モード** (`evaluation-prompt.txt`): ドキュメントの品質を詳細に評価
-- **実装準備判定モード** (`evaluation-prompt-v2.txt`): 実装に移れるかを判定し、ブロッカーや推奨アプローチを提示
-
-新形式のレスポンス（v2プロンプト使用時）:
-- `ready_for_implementation`: 実装に移れるか（true/false）
-- `blockers`: 実装を妨げる重大な問題のリスト
-- `recommended_approach`: 複数案がある場合の推奨アプローチ
-
-**注意**: 評価結果の`pass`フィールドはオプションです。合格判定は `score >= target_score` または `ready_for_implementation === true` で行ってください。
+- **flexible** (推奨): Codexの自然な出力形式を受け入れ、詳細な分析を保持
+- **strict**: JSON形式を厳密に要求（後方互換性用）
 
 ### ダッシュボード監視（オプション）
 
@@ -178,7 +180,8 @@ npm run start:integrated
 | `MAX_ITERATIONS` | 最大改善回数 | 5 | **現在サーバー側未使用**（将来拡張用） |
 | `USE_MOCK_EVALUATOR` | モック評価器を使用 | false | |
 | `TARGET_SCORE` | 目標スコア | 8.0 | |
-| `EVALUATION_PROMPT_PATH` | 評価プロンプトファイルパス | （未指定） | 既定: mcp-server/prompts/evaluation-prompt.txt |
+| `EVALUATION_MODE` | 評価モード | flexible | flexible: 柔軟な形式, strict: JSON厳密 |
+| `EVALUATION_PROMPT_PATH` | 評価プロンプトファイルパス | （未指定） | 既定: prompts/evaluation-prompt-flexible.txt |
 | `CODEX_TIMEOUT` | Codexタイムアウト時間（ミリ秒） | 300000 | 5分（最大30分まで設定可能） |
 | `CODEX_MAX_BUFFER` | Codex出力バッファサイズ | 20971520 | |
 | `CODEX_SUPPORTS_JSON_FORMAT` | --format jsonオプションのサポート | true | .env.exampleでは互換性のためfalse推奨 |
@@ -186,17 +189,16 @@ npm run start:integrated
 
 ### プロンプトのカスタマイズ
 
-評価プロンプトは既定で `mcp-server/prompts/` ディレクトリ内のテキストファイルを使用します。必要に応じて`EVALUATION_PROMPT_PATH`環境変数で上書き可能:
+評価プロンプトは `prompts/` ディレクトリ内のテキストファイルを使用します。`EVALUATION_PROMPT_PATH`環境変数で指定可能:
 
-- `evaluation-prompt.txt`: 日本語プロンプト
-- `evaluation-prompt-en.txt`: 英語プロンプト
+- `evaluation-prompt-flexible.txt`: 柔軟な評価プロンプト（推奨）
 
 プロンプト内では以下の変数が使用可能:
-- `{{completeness_weight}}`: 完全性の重み（%）
-- `{{accuracy_weight}}`: 正確性の重み（%）
-- `{{clarity_weight}}`: 明確性の重み（%）
-- `{{usability_weight}}`: 実用性の重み（%）
 - `{{document_content}}`: 評価対象のドキュメント
+
+柔軟な評価モードでは、Codexが自然な形式で以下を返します:
+- 必須: `ready_for_implementation` (実装可否) と `score` (評価スコア)
+- 任意: 結論、根拠、分析、推奨事項など、評価に必要と判断した情報
 
 ## 開発
 

@@ -32,26 +32,10 @@ export class CodexEvaluator {
   }
 
   async evaluate(request: EvaluationRequest): Promise<EvaluationResponse> {
-    // weightsが指定されている場合は使用、そうでなければrubricまたはデフォルトを使用
-    let rubric: EvaluationRubric;
-    if (request.weights) {
-      // weightsを正規化（%表記から小数へ）
-      const total = request.weights.completeness + request.weights.accuracy + 
-                   request.weights.clarity + request.weights.usability;
-      rubric = {
-        completeness: request.weights.completeness / total,
-        accuracy: request.weights.accuracy / total,
-        clarity: request.weights.clarity / total,
-        usability: request.weights.usability / total
-      };
-    } else {
-      rubric = request.rubric || this.defaultRubric;
-    }
-    
     const targetScore = request.target_score || this.targetScore;
     
     // 評価プロンプトの構築
-    const evaluationPrompt = this.buildEvaluationPrompt(request.content, rubric);
+    const evaluationPrompt = this.buildEvaluationPrompt(request.content);
     
     // 再試行ロジック付き実行
     let lastError: any;
@@ -174,13 +158,15 @@ export class CodexEvaluator {
           
           // レスポンスの構築
           const response: EvaluationResponse = {
+            ready_for_implementation: evaluation.ready_for_implementation ?? (evaluation.score >= targetScore),
             score: evaluation.score,
             rubric_scores: evaluation.rubric_scores,
             pass: evaluation.score >= targetScore,
             suggestions: evaluation.suggestions,
             metadata: {
               evaluation_time: executionTime,
-              model_used: 'codex-1'
+              model_used: 'codex-1',
+              parsing_method: evaluation.metadata?.parsing_method
             }
           };
           
@@ -246,81 +232,220 @@ export class CodexEvaluator {
   }
 
   private getDefaultPromptTemplate(): string {
-    return `以下のドキュメントを評価し、JSON形式で結果を返してください。
+    return `以下のドキュメント/実装プランを評価してください。
 
-評価基準と重み:
-- 完全性 ({{completeness_weight}}%): すべての要求事項がカバーされているか
-- 正確性 ({{accuracy_weight}}%): 技術的に正確か
-- 明確性 ({{clarity_weight}}%): 理解しやすいか
-- 実用性 ({{usability_weight}}%): 実装可能か
-
-評価対象ドキュメント:
-{{document_content}}
-
-以下の形式でJSONを返してください:
+必須項目（JSONフォーマットで含めてください）:
 {
-  "overall_score": 0-10の数値,
-  "rubric_scores": {
-    "completeness": 0-10の数値,
-    "accuracy": 0-10の数値,
-    "clarity": 0-10の数値,
-    "usability": 0-10の数値
-  },
-  "suggestions": [
-    "改善提案1",
-    "改善提案2",
-    ...
-  ]
-}`;
+  "ready_for_implementation": <実装に移れるか true/false>,
+  "score": <総合評価スコア 0-10>
+}
+
+上記の必須項目以外は、評価内容に応じて適切な形式で分析結果を提供してください。
+
+評価対象:
+{{document_content}}`;
   }
 
-  private buildEvaluationPrompt(content: string, rubric: EvaluationRubric): string {
+  private buildEvaluationPrompt(content: string): string {
     // プロンプトテンプレートを読み込み
     let template = this.loadPromptTemplate();
     
     // テンプレート変数を置換
-    template = template
-      .replace(/\{\{completeness_weight\}\}/g, String(rubric.completeness * 100))
-      .replace(/\{\{accuracy_weight\}\}/g, String(rubric.accuracy * 100))
-      .replace(/\{\{clarity_weight\}\}/g, String(rubric.clarity * 100))
-      .replace(/\{\{usability_weight\}\}/g, String(rubric.usability * 100))
-      .replace(/\{\{document_content\}\}/g, content);
+    template = template.replace(/\{\{document_content\}\}/g, content);
     
     return template;
   }
 
   private parseCodexOutput(output: string): any {
     try {
-      // Codexの出力から必要な情報を抽出
       console.log('Codex出力解析中...');
       
-      // 1. Codexのメタデータ行を除去（[timestamp]で始まる行）
-      const lines = output.split('\n');
-      const contentLines = lines.filter(line => 
-        !line.startsWith('[20') && // タイムスタンプ
-        !line.startsWith('--------') &&
-        !line.startsWith('workdir:') &&
-        !line.startsWith('model:') &&
-        !line.startsWith('provider:') &&
-        !line.startsWith('approval:') &&
-        !line.startsWith('sandbox:') &&
-        !line.startsWith('reasoning') &&
-        !line.startsWith('User instructions:') &&
-        !line.startsWith('thinking') &&
-        !line.startsWith('**') &&
-        !line.startsWith('tokens used:') &&
-        !line.startsWith('Reading prompt')
-      );
+      // 評価モードを確認（デフォルト: flexible）
+      const evaluationMode = process.env.EVALUATION_MODE || 'flexible';
       
-      const cleanOutput = contentLines.join('\n').trim();
+      // メタデータを除去
+      const cleanOutput = this.removeMetadata(output);
       
-      // 2. JSON部分を抽出
-      let jsonStr: string | null = null;
+      // 柔軟なパース戦略
+      if (evaluationMode === 'flexible') {
+        return this.flexibleParse(output, cleanOutput);
+      } else {
+        // strictモード（従来のJSON厳密パース）
+        return this.strictJSONParse(output, cleanOutput);
+      }
+    } catch (error) {
+      console.error('Codex出力の解析エラー:', error);
+      console.error('生の出力（最初の500文字）:', output.substring(0, 500));
+      throw error;
+    }
+  }
+
+  private removeMetadata(output: string): string {
+    const lines = output.split('\n');
+    const contentLines = lines.filter(line => 
+      !line.startsWith('[20') && // タイムスタンプ
+      !line.startsWith('--------') &&
+      !line.startsWith('workdir:') &&
+      !line.startsWith('model:') &&
+      !line.startsWith('provider:') &&
+      !line.startsWith('approval:') &&
+      !line.startsWith('sandbox:') &&
+      !line.startsWith('reasoning') &&
+      !line.startsWith('User instructions:') &&
+      !line.startsWith('thinking') &&
+      !line.startsWith('**') &&
+      !line.startsWith('tokens used:') &&
+      !line.startsWith('Reading prompt')
+    );
+    
+    return contentLines.join('\n').trim();
+  }
+
+  private flexibleParse(rawOutput: string, cleanOutput: string): any {
+    let result: any = {
+      metadata: { parsing_method: 'flexible' }
+    };
+
+    // Step 1: JSON部分を探して必須フィールドを抽出
+    const jsonData = this.extractJSONFromOutput(rawOutput, cleanOutput);
+    if (jsonData) {
+      // 必須フィールドを確認
+      result.ready_for_implementation = jsonData.ready_for_implementation ?? false;
+      result.score = jsonData.score ?? 5.0;
       
-      // 最後の "codex" マーカー以降のコンテンツを探す
-      const codexMarkerIndex = output.lastIndexOf('] codex\n');
-      if (codexMarkerIndex !== -1) {
-        const afterCodex = output.substring(codexMarkerIndex + 8); // "] codex\n" の長さ
+      // その他のJSONフィールドをマージ
+      Object.assign(result, jsonData);
+      result.metadata.parsing_method = 'json';
+    }
+
+    // Step 2: 構造化テキストから追加情報を抽出
+    const structuredData = this.parseStructuredText(cleanOutput);
+    
+    // JSONで取得できなかったフィールドを補完
+    if (!result.ready_for_implementation && structuredData.ready_for_implementation !== undefined) {
+      result.ready_for_implementation = structuredData.ready_for_implementation;
+    }
+    if (!result.score && structuredData.score !== undefined) {
+      result.score = structuredData.score;
+    }
+    
+    // 構造化データをマージ（既存フィールドは上書きしない）
+    for (const [key, value] of Object.entries(structuredData)) {
+      if (!(key in result) && value !== undefined) {
+        result[key] = value;
+      }
+    }
+    
+    // 必須フィールドのデフォルト値
+    if (result.ready_for_implementation === undefined) {
+      result.ready_for_implementation = false;
+      console.warn('ready_for_implementationが見つからないため、falseに設定');
+    }
+    if (result.score === undefined) {
+      result.score = 5.0;
+      console.warn('scoreが見つからないため、5.0に設定');
+    }
+    
+    return result;
+  }
+
+  private parseStructuredText(text: string): any {
+    const result: any = {};
+    
+    // セクションベースの解析
+    const sections = this.extractSections(text);
+    
+    // 「結論」セクションを探す
+    if (sections['結論'] || sections['conclusion']) {
+      result.conclusion = sections['結論'] || sections['conclusion'];
+    }
+    
+    // 「根拠」セクションを探す
+    if (sections['根拠'] || sections['rationale']) {
+      result.rationale = sections['根拠'] || sections['rationale'];
+    }
+    
+    // 「分析」「現状」セクション
+    if (sections['分析'] || sections['analysis'] || sections['現状分析']) {
+      result.analysis = sections['分析'] || sections['analysis'] || sections['現状分析'];
+    }
+    
+    // 「推奨事項」「改善提案」セクション
+    if (sections['推奨事項'] || sections['recommendations'] || sections['改善提案']) {
+      result.recommendations = sections['推奨事項'] || sections['recommendations'] || sections['改善提案'];
+    }
+    
+    // 実装可否の判定を探す
+    const implPatterns = [
+      /実装に移れ(る|ます)/,
+      /実装可能/,
+      /ready\s+for\s+implementation/i,
+      /can\s+proceed\s+with\s+implementation/i
+    ];
+    
+    for (const pattern of implPatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        result.ready_for_implementation = true;
+        break;
+      }
+    }
+    
+    // スコアを探す
+    const scorePatterns = [
+      /(?:総合)?(?:評価)?スコア[：:]\s*(\d+(?:\.\d+)?)/,
+      /score[：:]\s*(\d+(?:\.\d+)?)/i,
+      /(\d+(?:\.\d+)?)\s*\/\s*10/
+    ];
+    
+    for (const pattern of scorePatterns) {
+      const match = text.match(pattern);
+      if (match && match[1]) {
+        result.score = parseFloat(match[1]);
+        break;
+      }
+    }
+    
+    return result;
+  }
+
+  private extractSections(text: string): { [key: string]: string } {
+    const sections: { [key: string]: string } = {};
+    
+    // セクションヘッダーのパターン
+    const sectionPattern = /^([^：:\n]+)[：:]\s*$/gm;
+    const matches = Array.from(text.matchAll(sectionPattern));
+    
+    for (let i = 0; i < matches.length; i++) {
+      const sectionName = matches[i][1].trim();
+      const startIdx = matches[i].index! + matches[i][0].length;
+      const endIdx = (i < matches.length - 1) ? matches[i + 1].index! : text.length;
+      
+      sections[sectionName] = text.substring(startIdx, endIdx).trim();
+    }
+    
+    // 箇条書きセクションも抽出
+    const bulletPattern = /^[-・■□◆◇*]\s*([^：:]+)[：:]\s*(.+)$/gm;
+    const bulletMatches = Array.from(text.matchAll(bulletPattern));
+    
+    for (const match of bulletMatches) {
+      const key = match[1].trim();
+      const value = match[2].trim();
+      if (!sections[key]) {
+        sections[key] = value;
+      }
+    }
+    
+    return sections;
+  }
+
+  private extractJSONFromOutput(rawOutput: string, cleanOutput: string): any | null {
+    let jsonStr: string | null = null;
+    
+    // 最後の "codex" マーカー以降のコンテンツを探す
+    const codexMarkerIndex = rawOutput.lastIndexOf('] codex\n');
+    if (codexMarkerIndex !== -1) {
+      const afterCodex = rawOutput.substring(codexMarkerIndex + 8); // "] codex\n" の長さ
         const jsonStart = afterCodex.indexOf('{');
         if (jsonStart !== -1) {
           // JSON終了位置を見つける
@@ -409,53 +534,61 @@ export class CodexEvaluator {
           }
         }
       }
-      
-      if (!jsonStr) {
-        throw new Error('有効なJSON出力が見つかりません');
-      }
-      
-      // JSONパース
-      const parsed = JSON.parse(jsonStr);
-      
-      // 結果の正規化（新旧両方のフォーマットに対応）
-      const result: any = {
-        score: parsed.score ?? parsed.overall_score ?? 5.0
-      };
-
-      // 新形式のフィールド
-      if ('ready_for_implementation' in parsed) {
-        result.ready_for_implementation = parsed.ready_for_implementation;
-      }
-      if (parsed.blockers) {
-        result.blockers = parsed.blockers;
-      }
-      if (parsed.recommended_approach) {
-        result.recommended_approach = parsed.recommended_approach;
-      }
-
-      // 旧形式のフィールド（後方互換性）
-      if (parsed.rubric_scores) {
-        result.rubric_scores = parsed.rubric_scores;
-      } else if (parsed.completeness || parsed.accuracy || parsed.clarity || parsed.usability) {
-        result.rubric_scores = {
-          completeness: parsed.completeness ?? 5.0,
-          accuracy: parsed.accuracy ?? 5.0,
-          clarity: parsed.clarity ?? 5.0,
-          usability: parsed.usability ?? 5.0
-        };
-      }
-      
-      if (parsed.suggestions || parsed.recommendations || parsed.reasons) {
-        result.suggestions = parsed.suggestions || parsed.recommendations || parsed.reasons || [];
-      }
-
-      return result;
-    } catch (error) {
-      console.error('Codex出力の解析エラー:', error);
-      console.error('生の出力（最初の500文字）:', output.substring(0, 500));
-      
-      // エラーを再スロー（呼び出し元で処理）
-      throw error;
+    
+    if (!jsonStr) {
+      return null;  // JSONが見つからない場合はnullを返す
     }
+    
+    try {
+      const parsed = JSON.parse(jsonStr);
+      return parsed;
+    } catch (error) {
+      console.warn('JSON解析エラー:', error);
+      return null;
+    }
+  }
+
+  private strictJSONParse(rawOutput: string, cleanOutput: string): any {
+    // 従来のJSON厳密パース
+    const jsonData = this.extractJSONFromOutput(rawOutput, cleanOutput);
+    
+    if (!jsonData) {
+      throw new Error('有効なJSON出力が見つかりません');
+    }
+    
+    // 結果の正規化（新旧両方のフォーマットに対応）
+    const result: any = {
+      score: jsonData.score ?? jsonData.overall_score ?? 5.0,
+      metadata: { parsing_method: 'json' }
+    };
+
+    // 新形式のフィールド
+    if ('ready_for_implementation' in jsonData) {
+      result.ready_for_implementation = jsonData.ready_for_implementation;
+    }
+    if (jsonData.blockers) {
+      result.blockers = jsonData.blockers;
+    }
+    if (jsonData.recommended_approach) {
+      result.recommended_approach = jsonData.recommended_approach;
+    }
+
+    // 旧形式のフィールド（後方互換性）
+    if (jsonData.rubric_scores) {
+      result.rubric_scores = jsonData.rubric_scores;
+    } else if (jsonData.completeness || jsonData.accuracy || jsonData.clarity || jsonData.usability) {
+      result.rubric_scores = {
+        completeness: jsonData.completeness ?? 5.0,
+        accuracy: jsonData.accuracy ?? 5.0,
+        clarity: jsonData.clarity ?? 5.0,
+        usability: jsonData.usability ?? 5.0
+      };
+    }
+    
+    if (jsonData.suggestions || jsonData.recommendations || jsonData.reasons) {
+      result.suggestions = jsonData.suggestions || jsonData.recommendations || jsonData.reasons || [];
+    }
+
+    return result;
   }
 }

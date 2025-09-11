@@ -9,7 +9,6 @@ export class CodexEvaluatorMock {
   };
 
   async evaluate(request: EvaluationRequest): Promise<EvaluationResponse> {
-    const rubric = request.rubric || this.defaultRubric;
     const targetScore = request.target_score || 8.0;
     
     // シンプルなモック評価ロジック
@@ -25,10 +24,10 @@ export class CodexEvaluatorMock {
     const usability = hasCode ? 7 : 5;
     
     const weightedScore = 
-      completeness * rubric.completeness +
-      accuracy * rubric.accuracy +
-      clarity * rubric.clarity +
-      usability * rubric.usability;
+      completeness * this.defaultRubric.completeness +
+      accuracy * this.defaultRubric.accuracy +
+      clarity * this.defaultRubric.clarity +
+      usability * this.defaultRubric.usability;
     
     const suggestions = [];
     if (contentLength < 500) {
@@ -42,6 +41,7 @@ export class CodexEvaluatorMock {
     }
     
     return {
+      ready_for_implementation: weightedScore >= targetScore,
       score: Number(weightedScore.toFixed(1)),
       rubric_scores: {
         completeness,
