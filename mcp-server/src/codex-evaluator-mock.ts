@@ -11,11 +11,14 @@ export class CodexEvaluatorMock {
   async evaluate(request: EvaluationRequest): Promise<EvaluationResponse> {
     const targetScore = request.target_score || 8.0;
     
+    // ファイルパスからモックコンテンツを生成
+    const content = `[Document from ${request.document_path}]`;
+    
     // シンプルなモック評価ロジック
-    const contentLength = request.content.length;
-    const hasTitle = request.content.includes('#');
-    const hasCode = request.content.includes('```');
-    const hasList = request.content.includes('-') || request.content.includes('*');
+    const contentLength = content.length;
+    const hasTitle = content.includes('#');
+    const hasCode = content.includes('```');
+    const hasList = content.includes('-') || content.includes('*');
     
     // スコア計算
     const completeness = Math.min(10, contentLength / 100);

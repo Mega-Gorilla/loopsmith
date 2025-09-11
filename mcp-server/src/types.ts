@@ -6,7 +6,7 @@ export interface EvaluationRubric {
 }
 
 export interface EvaluationRequest {
-  content: string;
+  document_path: string;  // 評価対象ドキュメントのファイルパス
   target_score?: number;
   project_path?: string;  // Path to the project directory for context-aware evaluation
   evaluation_mode?: 'flexible' | 'strict';  // 評価モード（デフォルト: flexible）

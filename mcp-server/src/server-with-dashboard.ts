@@ -169,7 +169,7 @@ class IntegratedServer {
           const evalRequest: EvaluationRequest = args as EvaluationRequest;
           
           // ダッシュボードに評価開始を通知
-          this.dashboard.startEvaluation(evalRequest.content);
+          this.dashboard.startEvaluation(`File: ${evalRequest.document_path}`);
           
           // 進捗を定期的に更新
           let progress = 0;

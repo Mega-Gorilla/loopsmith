@@ -207,9 +207,9 @@ async function main() {
         inputSchema: {
           type: 'object',
           properties: {
-            content: {
+            document_path: {
               type: 'string',
-              description: 'The document content to evaluate'
+              description: 'Path to the document file to evaluate'
             },
             target_score: {
               type: 'number',
@@ -247,7 +247,7 @@ async function main() {
               description: 'Path to the project directory for context-aware evaluation (read-only access)'
             }
           },
-          required: ['content']
+          required: ['document_path']
         }
       }]
     }));
@@ -259,27 +259,22 @@ async function main() {
       if (name === 'evaluate_document') {
         try {
           logger.info('Starting document evaluation', { 
-            contentLength: args.content?.length,
+            documentPath: args.document_path,
             targetScore: args.target_score,
             projectPath: args.project_path 
           });
 
           // Send start event to dashboard
           await sendDashboardEvent('evaluation:start', {
-            document: args.content?.substring(0, 200) + '...',
+            document: `File: ${args.document_path}`,
+            documentPath: args.document_path,
             projectPath: args.project_path,
             targetScore: args.target_score
           });
 
           const evaluationRequest = {
-            content: args.content,
+            document_path: args.document_path,
             target_score: args.target_score || parseFloat(process.env.TARGET_SCORE || '8.0'),
-            weights: args.weights || {
-              completeness: 30,
-              accuracy: 30,
-              clarity: 20,
-              usability: 20
-            },
             project_path: args.project_path  // Claude Codeの実行ディレクトリ
           };
 
