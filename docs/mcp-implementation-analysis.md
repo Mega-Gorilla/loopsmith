@@ -50,7 +50,7 @@ Serena MCPは、以下の設計により広く採用されています：
    claude mcp add serena -- uvx --from git+https://github.com/oraios/serena serena-mcp-server
    
    # Node/TSベースの例（本プロジェクトで採用予定）
-   claude mcp add codex-evaluator \
+   claude mcp add loopsmith \
      --env EVALUATION_PROMPT_PATH=../prompts/evaluation-prompt.txt \
      --env CODEX_SUPPORTS_JSON_FORMAT=false \
      --env CODEX_TIMEOUT=300000 \
@@ -116,7 +116,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const server = new Server(
   {
-    name: 'codex-evaluator',
+    name: 'loopsmith',
     version: '2.0.0'
   },
   {
@@ -141,7 +141,7 @@ async function main() {
 
   const server = new Server(
     {
-      name: 'codex-evaluator',
+      name: 'loopsmith',
       version: '2.0.0'
     },
     {
@@ -221,10 +221,10 @@ main().catch(console.error);
 2. **Claude Code統合テスト**
    ```bash
    # macOS/Linux
-   claude mcp add codex-evaluator-test -- node "$(pwd)/mcp-server/dist/server-stdio.js"
+   claude mcp add loopsmith-test -- node "$(pwd)/mcp-server/dist/server-stdio.js"
    
    # Windows PowerShell
-   claude mcp add codex-evaluator-test -- node "$PWD\mcp-server\dist\server-stdio.js"
+   claude mcp add loopsmith-test -- node "$PWD\mcp-server\dist\server-stdio.js"
    ```
 
 3. **互換性テスト**
@@ -275,7 +275,7 @@ CODEX_SUPPORTS_JSON_FORMAT=false
 
 **新しい方法（登録時指定）：**
 ```bash
-claude mcp add codex-evaluator \
+claude mcp add loopsmith \
   --env CODEX_TIMEOUT=300000 \
   --env USE_MOCK_EVALUATOR=false \
   --env EVALUATION_PROMPT_PATH=../prompts/evaluation-prompt.txt \
@@ -387,7 +387,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // サーバー初期化（capabilitiesを必ず指定）
 const server = new Server(
   {
-    name: 'codex-evaluator',
+    name: 'loopsmith',
     version: '2.0.0'
   },
   {
@@ -476,7 +476,7 @@ npm install
 npm run build
 
 # Claude Codeに登録（全環境変数を含む）
-claude mcp add codex-evaluator \
+claude mcp add loopsmith \
   --env CODEX_TIMEOUT=300000 \
   --env USE_MOCK_EVALUATOR=false \
   --env TARGET_SCORE=8.0 \
@@ -501,7 +501,7 @@ npm run build
 
 # Claude Codeに登録
 $currentPath = Get-Location
-claude mcp add codex-evaluator `
+claude mcp add loopsmith `
   --env CODEX_TIMEOUT=300000 `
   --env USE_MOCK_EVALUATOR=false `
   --env TARGET_SCORE=8.0 `

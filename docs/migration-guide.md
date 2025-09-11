@@ -19,8 +19,8 @@ LoopSmith v2.0では、標準MCPプロトコルに準拠したstdio通信をサ�
 # 既存のWebSocketサーバー登録を確認
 claude mcp list
 
-# 既存の登録を削除（名前が"codex-evaluator"の場合）
-claude mcp remove codex-evaluator
+# 既存の登録を削除（名前が"loopsmith"の場合）
+claude mcp remove loopsmith
 ```
 
 ### ステップ2: 最新コードを取得してビルド
@@ -43,10 +43,10 @@ npm run build
 
 ```bash
 # 標準実装で登録（絶対パス推奨）
-claude mcp add codex-evaluator -- node "$(pwd)/mcp-server/dist/server-stdio.js"
+claude mcp add loopsmith -- node "$(pwd)/mcp-server/dist/server-stdio.js"
 
 # または、カスタム環境変数を指定
-claude mcp add codex-evaluator \
+claude mcp add loopsmith \
   --env USE_MOCK_EVALUATOR=false \
   --env TARGET_SCORE=8.0 \
   --env CODEX_TIMEOUT=300000 \
@@ -58,10 +58,10 @@ claude mcp add codex-evaluator \
 
 ```powershell
 # 標準実装で登録（絶対パス推奨）
-claude mcp add codex-evaluator -- node "$PWD\mcp-server\dist\server-stdio.js"
+claude mcp add loopsmith -- node "$PWD\mcp-server\dist\server-stdio.js"
 
 # または、カスタム環境変数を指定
-claude mcp add codex-evaluator `
+claude mcp add loopsmith `
   --env USE_MOCK_EVALUATOR=false `
   --env TARGET_SCORE=8.0 `
   --env CODEX_TIMEOUT=300000 `
@@ -96,7 +96,7 @@ TARGET_SCORE=8.0
 
 ```bash
 # claude mcp addコマンドで直接指定（絶対パス推奨）
-claude mcp add codex-evaluator \
+claude mcp add loopsmith \
   --env USE_MOCK_EVALUATOR=false \
   --env TARGET_SCORE=8.0 \
   --env CODEX_SUPPORTS_JSON_FORMAT=false \
@@ -127,12 +127,12 @@ A: サーバーが正しく登録されているか確認:
 
 ```bash
 claude mcp list
-# codex-evaluatorが表示されるか確認
+# loopsmithが表示されるか確認
 
 # 再登録が必要な場合
-claude mcp remove codex-evaluator
-claude mcp add codex-evaluator -- node "$(pwd)/mcp-server/dist/server-stdio.js"  # macOS/Linux
-# Windows: claude mcp add codex-evaluator -- node "$PWD\mcp-server\dist\server-stdio.js"
+claude mcp remove loopsmith
+claude mcp add loopsmith -- node "$(pwd)/mcp-server/dist/server-stdio.js"  # macOS/Linux
+# Windows: claude mcp add loopsmith -- node "$PWD\mcp-server\dist\server-stdio.js"
 ```
 
 ### Q: エラー「Cannot find module」が発生

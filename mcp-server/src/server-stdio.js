@@ -54,7 +54,7 @@ async function main() {
     // Create MCP server instance
     const server = new Server(
       {
-        name: 'codex-evaluator',
+        name: 'loopsmith',
         version: '2.0.0'
       },
       {

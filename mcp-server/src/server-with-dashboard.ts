@@ -74,7 +74,7 @@ class IntegratedServer {
           result: {
             protocolVersion: '2024-11-05',
             serverInfo: {
-              name: 'codex-evaluator-with-dashboard',
+              name: 'loopsmith-with-dashboard',
               version: '1.0.0'
             },
             capabilities: {

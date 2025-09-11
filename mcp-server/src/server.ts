@@ -61,7 +61,7 @@ class CodexMCPServer {
           result: {
             protocolVersion: '2024-11-05',
             serverInfo: {
-              name: 'codex-evaluator',
+              name: 'loopsmith',
               version: '1.0.0'
             },
             capabilities: {

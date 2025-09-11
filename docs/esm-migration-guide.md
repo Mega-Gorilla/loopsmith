@@ -79,7 +79,7 @@ async function main() {
   const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js');
   
   const server = new Server(
-    { name: 'codex-evaluator', version: '2.0.0' },
+    { name: 'loopsmith', version: '2.0.0' },
     { capabilities: { tools: {} } }
   );
   

@@ -10,7 +10,7 @@
    - Markdown形式で構造化
 
 2. **品質評価**
-   - `codex-evaluator.evaluate_document` ツールを使用
+   - `loopsmith.evaluate_document` ツールを使用
    - 目標スコア: 8.0/10.0
 
 3. **改善ループ**

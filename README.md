@@ -67,10 +67,10 @@ npm run build
 
 ```bash
 # 最小設定（絶対パス使用）
-claude mcp add codex-evaluator -- node "$(pwd)/mcp-server/dist/server-stdio.js"
+claude mcp add loopsmith -- node "$(pwd)/mcp-server/dist/server-stdio.js"
 
 # 推奨設定（環境変数込み）
-claude mcp add codex-evaluator \
+claude mcp add loopsmith \
   --env USE_MOCK_EVALUATOR=false \
   --env TARGET_SCORE=8.0 \
   --env CODEX_TIMEOUT=300000 \
@@ -82,10 +82,10 @@ claude mcp add codex-evaluator \
 
 ```powershell
 # 最小設定（絶対パス使用）
-claude mcp add codex-evaluator -- node "$PWD\mcp-server\dist\server-stdio.js"
+claude mcp add loopsmith -- node "$PWD\mcp-server\dist\server-stdio.js"
 
 # 推奨設定（環境変数込み）
-claude mcp add codex-evaluator `
+claude mcp add loopsmith `
   --env USE_MOCK_EVALUATOR=false `
   --env TARGET_SCORE=8.0 `
   --env CODEX_TIMEOUT=300000 `
@@ -106,7 +106,7 @@ claude mcp list
 
 # Claude Code内で確認
 > /mcp
-# codex-evaluatorが表示されることを確認
+# loopsmithが表示されることを確認
 
 > /tools
 # evaluate_documentツールが利用可能なことを確認
