@@ -129,6 +129,10 @@ class CodexMCPServer {
                       type: 'number',
                       default: 8.0,
                       description: '目標スコア'
+                    },
+                    project_path: {
+                      type: 'string',
+                      description: 'プロジェクトディレクトリパス（読み取り専用アクセス）'
                     }
                   },
                   required: ['content']

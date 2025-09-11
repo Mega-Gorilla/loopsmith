@@ -64,7 +64,7 @@ export class CodexEvaluator {
       }
       
       try {
-        const result = await this.executeCodex(evaluationPrompt, targetScore);
+        const result = await this.executeCodex(evaluationPrompt, targetScore, request.project_path);
         return result;
       } catch (error) {
         lastError = error;
@@ -89,7 +89,7 @@ export class CodexEvaluator {
     };
   }
 
-  private async executeCodex(evaluationPrompt: string, targetScore: number): Promise<EvaluationResponse> {
+  private async executeCodex(evaluationPrompt: string, targetScore: number, projectPath?: string): Promise<EvaluationResponse> {
     return new Promise((resolve, reject) => {
       const startTime = Date.now();
       
@@ -110,12 +110,23 @@ export class CodexEvaluator {
         codexArgs.push('--format', 'json');
       }
       
+      // 作業ディレクトリを設定（project_pathが指定されている場合はそれを使用）
+      const workingDirectory = projectPath || process.cwd();
+      console.log(`Codex作業ディレクトリ: ${workingDirectory}`);
+      
+      // CodexにREAD-ONLYサンドボックスを設定するための環境変数
+      const codexEnv = {
+        ...process.env,
+        CODEX_SANDBOX_MODE: 'workspace-read',  // 読み取り専用モードを示唆
+        CODEX_WORKSPACE_PATH: workingDirectory
+      };
+      
       const codexProcess = spawn(codexCommand, codexArgs, {
         shell: isWindows, // Windowsではshellをtrueに
         windowsHide: true,
         timeout: this.codexTimeout,  // 環境変数から設定
-        env: { ...process.env },
-        cwd: process.cwd()  // 作業ディレクトリを明示的に設定
+        env: codexEnv,
+        cwd: workingDirectory  // 指定されたプロジェクトパスで実行
       });
       
       let stdout = '';

@@ -15,6 +15,7 @@ export interface EvaluationRequest {
     usability: number;
   };
   target_score?: number;
+  project_path?: string;  // Path to the project directory for context-aware evaluation
 }
 
 export interface EvaluationResponse {

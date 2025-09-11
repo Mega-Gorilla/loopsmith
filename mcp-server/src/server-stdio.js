@@ -109,6 +109,10 @@ async function main() {
                   default: 20
                 }
               }
+            },
+            project_path: {
+              type: 'string',
+              description: 'Path to the project directory for context-aware evaluation (read-only access)'
             }
           },
           required: ['content']
@@ -124,7 +128,8 @@ async function main() {
         try {
           logger.info('Starting document evaluation', { 
             contentLength: args.content?.length,
-            targetScore: args.target_score 
+            targetScore: args.target_score,
+            projectPath: args.project_path 
           });
 
           const evaluationRequest = {
@@ -135,7 +140,8 @@ async function main() {
               accuracy: 30,
               clarity: 20,
               usability: 20
-            }
+            },
+            project_path: args.project_path  // Claude Codeの実行ディレクトリ
           };
 
           const result = await evaluator.evaluate(evaluationRequest);

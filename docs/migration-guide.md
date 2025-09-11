@@ -75,11 +75,49 @@ Claude Code内で以下を実行:
 
 ```
 > /mcp
-# codex-evaluatorが表示されることを確認
+# loopsmithが表示されることを確認
 
 > /tools
 # evaluate_documentツールが利用可能なことを確認
 ```
+
+## project_pathパラメータの活用
+
+v2.0では、評価時にプロジェクトディレクトリを指定できる`project_path`パラメータが追加されました。これにより、Codexが評価対象ドキュメントに関連するプロジェクトファイルを参照して、より正確な評価を行えるようになります。
+
+### 使用方法
+
+Claude Code内でevaluate_documentツールを使用する際:
+
+```javascript
+// 現在のプロジェクトディレクトリを指定
+evaluate_document({
+  content: "評価対象のドキュメント",
+  project_path: process.cwd(),  // 現在の作業ディレクトリ
+  weights: {
+    completeness: 30,
+    accuracy: 30,
+    clarity: 20,
+    usability: 20
+  }
+})
+
+// または特定のプロジェクトパスを指定
+evaluate_document({
+  content: "APIドキュメント",
+  project_path: "/path/to/your/project"
+})
+```
+
+### 動作仕様
+
+- **project_path未指定時**: MCPサーバー起動時のカレントディレクトリが使用されます
+- **project_path指定時**: 指定されたディレクトリでCodexが実行され、そのディレクトリ内のファイルを読み取り専用で参照可能
+- **セキュリティ**: Codexは指定されたディレクトリを読み取り専用でアクセス（`CODEX_SANDBOX_MODE: 'workspace-read'`）
+
+### 移行時の注意点
+
+旧WebSocket実装ではproject_pathパラメータがサポートされていません。この機能を利用するには、stdio実装への移行が必要です。
 
 ## 環境変数の移行
 

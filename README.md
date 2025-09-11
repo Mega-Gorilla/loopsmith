@@ -4,7 +4,7 @@ Claude CodeとOpenAI Codexを連携させた自動ドキュメント評価・改
 
 ## 概要
 
-LoopSmithは、Claude Codeが生成したドキュメントをCodex CLIで自動評価し、品質が目標スコアに達するまで自動的に改善を繰り返すシステムです。MCP (Model Context Protocol) プロトコル準拠の独自WebSocketサーバーを実装し、Claude CodeとCodexを統合しています。
+LoopSmithは、Claude Codeが生成したドキュメントをCodex CLIで自動評価し、品質が目標スコアに達するまで自動的に改善を繰り返すシステムです。MCP (Model Context Protocol) プロトコル準拠のstdioサーバーを実装し、Claude CodeとCodexを統合しています。
 
 **重要**: 本リポジトリは評価API（MCPツール）を提供します。自動改善ループの制御はClaude Code側のシステムプロンプトと会話フローで実行されます。
 
@@ -13,8 +13,8 @@ LoopSmithは、Claude Codeが生成したドキュメントをCodex CLIで自動
 - 🔄 **自動改善ループ**: Claude Code側で目標スコア（デフォルト8.0/10）達成まで自動的に改善を制御
 - 📊 **カスタマイズ可能な評価基準**: 完全性、正確性、明確性、実用性の4つの観点で評価
 - 🔧 **プロンプトカスタマイズ**: 評価プロンプトを外部ファイルから読み込み可能
-- 🚀 **標準MCPプロトコル準拠**: stdio通信による標準実装（v2.0）
-- 🌐 **レガシーWebSocket対応**: 後方互換性のためWebSocketサーバーも提供
+- 📁 **コンテキスト認識評価**: project_pathでプロジェクトファイルを参照した正確な評価
+- 🚀 **標準MCPプロトコル準拠**: stdio通信による標準実装
 - 🔒 **セキュアな認証**: Codex CLIの独自認証システムを使用
 - 📈 **リアルタイム監視**: ダッシュボード機能でブラウザから評価状況を監視可能（オプション）
 
@@ -35,15 +35,6 @@ cd loopsmith
 # 依存関係のインストール
 cd mcp-server
 npm install
-
-# 環境設定ファイルの作成
-# Windows:
-copy mcp-server\.env.example mcp-server\.env
-
-# macOS/Linux:
-cp mcp-server/.env.example mcp-server/.env
-
-# .envファイルを編集して設定を調整
 
 # Codex CLIの認証（初回のみ、必要に応じて）
 codex login
@@ -121,6 +112,22 @@ Claude Code内で以下のコマンドを実行:
 「APIリファレンスドキュメント」
 ```
 
+**project_pathパラメータの活用**:
+```javascript
+// Claude Codeが自動的に現在のプロジェクトパスを渡す場合
+evaluate_document({
+  content: "ドキュメント内容",
+  project_path: process.cwd()  // 自動で設定される
+})
+
+// または、特定のプロジェクトを明示的に指定
+evaluate_document({
+  content: "ドキュメント内容",
+  project_path: "/path/to/target/project"
+})
+```
+※ project_path未指定時は、MCPサーバー起動時のカレントディレクトリが使用されます。
+
 **評価パラメータ** (evaluate_documentツール):
 - `content` (必須): 評価対象のドキュメント
 - `weights` (推奨): 評価基準の重み
@@ -129,6 +136,7 @@ Claude Code内で以下のコマンドを実行:
   - `clarity`: 明確性の重み (0-100, デフォルト: 20)
   - `usability`: 実用性の重み (0-100, デフォルト: 20)
 - `target_score`: 目標スコア (デフォルト: 8.0)
+- `project_path`: プロジェクトディレクトリパス（Codexが読み取り専用でアクセス）
 - `rubric` (非推奨): 旧評価基準フォーマット
 
 **注意**: 評価結果の`pass`フィールドはオプションです。合格判定は `score >= target_score` で行ってください。
