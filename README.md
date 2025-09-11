@@ -181,7 +181,7 @@ npm run start:integrated
 | `USE_MOCK_EVALUATOR` | モック評価器を使用 | false | |
 | `TARGET_SCORE` | 目標スコア | 8.0 | |
 | `EVALUATION_MODE` | 評価モード | flexible | flexible: 柔軟な形式, strict: JSON厳密 |
-| `EVALUATION_PROMPT_PATH` | 評価プロンプトファイルパス | （未指定） | 既定: prompts/evaluation-prompt-flexible.txt |
+| `EVALUATION_PROMPT_PATH` | 評価プロンプトファイルパス | （未指定） | 既定: mcp-server/prompts/evaluation-prompt.txt |
 | `CODEX_TIMEOUT` | Codexタイムアウト時間（ミリ秒） | 300000 | 5分（最大30分まで設定可能） |
 | `CODEX_MAX_BUFFER` | Codex出力バッファサイズ | 20971520 | |
 | `CODEX_SUPPORTS_JSON_FORMAT` | --format jsonオプションのサポート | true | .env.exampleでは互換性のためfalse推奨 |
@@ -189,16 +189,16 @@ npm run start:integrated
 
 ### プロンプトのカスタマイズ
 
-評価プロンプトは `prompts/` ディレクトリ内のテキストファイルを使用します。`EVALUATION_PROMPT_PATH`環境変数で指定可能:
-
-- `evaluation-prompt-flexible.txt`: 柔軟な評価プロンプト（推奨）
+評価プロンプトは `mcp-server/prompts/evaluation-prompt.txt` を使用します。
 
 プロンプト内では以下の変数が使用可能:
 - `{{document_content}}`: 評価対象のドキュメント
 
-柔軟な評価モードでは、Codexが自然な形式で以下を返します:
+柔軟な評価モード（デフォルト）では、Codexが自然な形式で以下を返します:
 - 必須: `ready_for_implementation` (実装可否) と `score` (評価スコア)
 - 任意: 結論、根拠、分析、推奨事項など、評価に必要と判断した情報
+
+カスタムプロンプトを使用する場合は、`EVALUATION_PROMPT_PATH`環境変数で指定してください。
 
 ## 開発
 
