@@ -23,7 +23,7 @@ claude mcp list
 claude mcp remove loopsmith
 ```
 
-### ステップ2: 最新コードを取得してビルド
+### ステップ2: 最新コードを取得
 
 ```bash
 # リポジトリを更新
@@ -32,10 +32,9 @@ git pull
 # 依存関係を更新
 cd mcp-server
 npm install
-
-# TypeScriptをビルド
-npm run build
 ```
+
+**注意**: server-stdio.jsはJavaScriptファイルのため、ビルド不要です。
 
 ### ステップ3: 新しいstdioサーバーを登録
 
@@ -43,7 +42,7 @@ npm run build
 
 ```bash
 # 標準実装で登録（絶対パス推奨）
-claude mcp add loopsmith -- node "$(pwd)/mcp-server/dist/server-stdio.js"
+claude mcp add loopsmith -- node "$(pwd)/mcp-server/src/server-stdio.js"
 
 # または、カスタム環境変数を指定
 claude mcp add loopsmith \
@@ -51,14 +50,15 @@ claude mcp add loopsmith \
   --env TARGET_SCORE=8.0 \
   --env CODEX_TIMEOUT=300000 \
   --env CODEX_SUPPORTS_JSON_FORMAT=false \
-  -- node "$(pwd)/mcp-server/dist/server-stdio.js"
+  --env EVALUATION_MODE=flexible \
+  -- node "$(pwd)/mcp-server/src/server-stdio.js"
 ```
 
 **Windows PowerShell:**
 
 ```powershell
 # 標準実装で登録（絶対パス推奨）
-claude mcp add loopsmith -- node "$PWD\mcp-server\dist\server-stdio.js"
+claude mcp add loopsmith -- node "$PWD\mcp-server\src\server-stdio.js"
 
 # または、カスタム環境変数を指定
 claude mcp add loopsmith `
@@ -66,7 +66,8 @@ claude mcp add loopsmith `
   --env TARGET_SCORE=8.0 `
   --env CODEX_TIMEOUT=300000 `
   --env CODEX_SUPPORTS_JSON_FORMAT=false `
-  -- node "$PWD\mcp-server\dist\server-stdio.js"
+  --env EVALUATION_MODE=flexible `
+  -- node "$PWD\mcp-server\src\server-stdio.js"
 ```
 
 ### ステップ4: 動作確認
@@ -169,17 +170,17 @@ claude mcp list
 
 # 再登録が必要な場合
 claude mcp remove loopsmith
-claude mcp add loopsmith -- node "$(pwd)/mcp-server/dist/server-stdio.js"  # macOS/Linux
-# Windows: claude mcp add loopsmith -- node "$PWD\mcp-server\dist\server-stdio.js"
+claude mcp add loopsmith -- node "$(pwd)/mcp-server/src/server-stdio.js"  # macOS/Linux
+# Windows: claude mcp add loopsmith -- node "$PWD\mcp-server\src\server-stdio.js"
 ```
 
 ### Q: エラー「Cannot find module」が発生
 
-A: ビルドが完了しているか確認:
+A: 依存関係がインストールされているか確認:
 
 ```bash
 cd mcp-server
-npm run build
+npm install
 ```
 
 ## 後方互換性

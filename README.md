@@ -44,15 +44,14 @@ codex login
 
 ### クイックスタート（推奨：標準MCPサーバー）
 
-#### 1. ビルドとセットアップ
+#### 1. セットアップ
 
 ```bash
 cd mcp-server
 npm install
-npm run build  # 重要: TypeScriptをJavaScriptにコンパイル（必須）
 ```
 
-**注意**: `npm run build`は必ず実行してください。これによりsrcディレクトリのTypeScriptファイルがdistディレクトリにコンパイルされます。
+**注意**: server-stdio.jsはJavaScriptファイルのため、ビルド不要でsrcディレクトリから直接実行できます。
 
 #### 2. Claude CodeへのMCPサーバー登録
 
@@ -60,7 +59,7 @@ npm run build  # 重要: TypeScriptをJavaScriptにコンパイル（必須）
 
 ```bash
 # 最小設定（絶対パス使用）
-claude mcp add loopsmith -- node "$(pwd)/mcp-server/dist/server-stdio.js"
+claude mcp add loopsmith -- node "$(pwd)/mcp-server/src/server-stdio.js"
 
 # 推奨設定（環境変数込み）
 claude mcp add loopsmith \
@@ -68,14 +67,15 @@ claude mcp add loopsmith \
   --env TARGET_SCORE=8.0 \
   --env CODEX_TIMEOUT=300000 \
   --env CODEX_SUPPORTS_JSON_FORMAT=false \
-  -- node "$(pwd)/mcp-server/dist/server-stdio.js"
+  --env EVALUATION_MODE=flexible \
+  -- node "$(pwd)/mcp-server/src/server-stdio.js"
 ```
 
 **Windows PowerShell** (リポジトリルートから実行):
 
 ```powershell
 # 最小設定（絶対パス使用）
-claude mcp add loopsmith -- node "$PWD\mcp-server\dist\server-stdio.js"
+claude mcp add loopsmith -- node "$PWD\mcp-server\src\server-stdio.js"
 
 # 推奨設定（環境変数込み）
 claude mcp add loopsmith `
@@ -83,13 +83,14 @@ claude mcp add loopsmith `
   --env TARGET_SCORE=8.0 `
   --env CODEX_TIMEOUT=300000 `
   --env CODEX_SUPPORTS_JSON_FORMAT=false `
-  -- node "$PWD\mcp-server\dist\server-stdio.js"
+  --env EVALUATION_MODE=flexible `
+  -- node "$PWD\mcp-server\src\server-stdio.js"
 ```
 
 **注意**: 
-- ビルド（`npm run build`）実行後にdist/server-stdio.jsが生成されます
+- src/server-stdio.jsを直接使用（ビルド不要）
 - 相対パスではなく絶対パスの使用を推奨します
-- `CODEX_SUPPORTS_JSON_FORMAT=false`は互換性のため推奨
+- `EVALUATION_MODE=flexible`で柔軟な評価モードを有効化
 
 #### 3. 接続確認
 
