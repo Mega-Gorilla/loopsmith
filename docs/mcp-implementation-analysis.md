@@ -46,7 +46,15 @@ Serena MCPは、以下の設計により広く採用されています：
 
 1. **シンプルなインストール**
    ```bash
+   # Pythonベースの例（Serena）
    claude mcp add serena -- uvx --from git+https://github.com/oraios/serena serena-mcp-server
+   
+   # Node/TSベースの例（本プロジェクトで採用予定）
+   claude mcp add codex-evaluator \
+     --env EVALUATION_PROMPT_PATH=../prompts/evaluation-prompt.txt \
+     --env CODEX_SUPPORTS_JSON_FORMAT=false \
+     --env CODEX_TIMEOUT=300000 \
+     -- node dist/index.js
    ```
 
 2. **自動起動**: Claude Code起動時に自動的にサーバーも起動
@@ -67,6 +75,8 @@ Serena MCPは、以下の設計により広く採用されています：
 | **環境変数** | .envファイル | 登録時に指定 | 設定集約 |
 | **SDK使用** | 部分的 | フル活用 | 保守性向上 |
 | **デバッグ** | 別プロセスで困難 | 統合ログで容易 | 開発効率向上 |
+
+**注記**: リアルタイム監視ダッシュボード機能は、別コンポーネントとして継続提供されます。ダッシュボードはExpress.jsとSocket.IOを使用し、MCPサーバーとは独立して動作します。
 
 ### 3.2 コード比較
 
@@ -89,18 +99,63 @@ class CodexMCPServer {
 ```
 
 #### 標準実装（Stdio）
+
+**重要**: `@modelcontextprotocol/sdk`はESMパッケージです。以下の2つの方法から選択してください：
+
+**方法1: ESMへの完全移行（推奨）**
 ```typescript
-// index.ts
+// index.ts (ESM)
+// 前提: tsconfig.json: "module": "NodeNext", package.json: "type": "module"
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { fileURLToPath } from 'url';
+import path from 'path';
 
-const server = new Server({
-  name: 'codex-evaluator',
-  version: '2.0.0'
-});
+// ESMでの__dirname代替
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const server = new Server(
+  {
+    name: 'codex-evaluator',
+    version: '2.0.0'
+  },
+  {
+    capabilities: {
+      tools: {}  // ツール機能を有効化
+    }
+  }
+);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
+```
+
+**方法2: CJSでの動的import（現状維持）**
+```typescript
+// index.ts (CommonJS)
+// 前提: 現在のtsconfig.json: "module": "commonjs"を維持
+async function main() {
+  // ESMパッケージを動的import
+  const { Server } = await import('@modelcontextprotocol/sdk/server/index.js');
+  const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js');
+
+  const server = new Server(
+    {
+      name: 'codex-evaluator',
+      version: '2.0.0'
+    },
+    {
+      capabilities: {
+        tools: {}  // ツール機能を有効化
+      }
+    }
+  );
+
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+}
+
+main().catch(console.error);
 ```
 
 ## 4. 移行計画
@@ -113,8 +168,10 @@ await server.connect(transport);
    ```
 
 2. **依存関係の整理**
-   - 不要なパッケージ削除: `ws`, `express`, `socket.io`
+   - MCPサーバーのWebSocket依存を削除: `ws`を削除
+   - ダッシュボード機能は別途維持: `express`, `socket.io`は残す（ダッシュボード用）
    - MCP SDK のバージョン確認
+   - 注: ダッシュボード機能は独立したオプション機能として存続
 
 3. **ドキュメント準備**
    - 移行ガイド作成
@@ -122,14 +179,20 @@ await server.connect(transport);
 
 ### 4.2 フェーズ2: 実装（Week 2-3）
 
-1. **新しいエントリーポイント作成**
+1. **2つのエントリーポイント戦略**
    ```
    src/
-   ├── index.ts         # 新しいMCPサーバー
+   ├── index.ts                  # stdio版MCPサーバー（Claude Code用）
+   ├── server-with-dashboard.ts  # ダッシュボード統合版（オプション）
    ├── tools/
-   │   └── evaluator.ts # ツール実装
-   └── legacy/          # 旧実装を一時保存
+   │   └── evaluator.ts          # ツール実装（共通）
+   ├── dashboard/
+   │   └── dashboard.ts          # ダッシュボード機能（独立）
+   └── legacy/                   # 旧WebSocket実装を一時保存
    ```
+   
+   - `index.ts`: Claude Codeサブプロセス起動用（メイン）
+   - `server-with-dashboard.ts`: 監視機能が必要な場合の並行提供
 
 2. **Stdioサーバー実装**
    - MCP SDKを使用した標準実装
@@ -157,7 +220,11 @@ await server.connect(transport);
 
 2. **Claude Code統合テスト**
    ```bash
-   claude mcp add codex-evaluator-test -- node /path/to/dist/index.js
+   # macOS/Linux
+   claude mcp add codex-evaluator-test -- node "$(pwd)/mcp-server/dist/server-stdio.js"
+   
+   # Windows PowerShell
+   claude mcp add codex-evaluator-test -- node "$PWD\mcp-server\dist\server-stdio.js"
    ```
 
 3. **互換性テスト**
@@ -202,6 +269,8 @@ Claude Code (親プロセス)
 # .env
 CODEX_TIMEOUT=300000
 USE_MOCK_EVALUATOR=false
+EVALUATION_PROMPT_PATH=../prompts/evaluation-prompt.txt
+CODEX_SUPPORTS_JSON_FORMAT=false
 ```
 
 **新しい方法（登録時指定）：**
@@ -209,8 +278,18 @@ USE_MOCK_EVALUATOR=false
 claude mcp add codex-evaluator \
   --env CODEX_TIMEOUT=300000 \
   --env USE_MOCK_EVALUATOR=false \
+  --env EVALUATION_PROMPT_PATH=../prompts/evaluation-prompt.txt \
+  --env CODEX_SUPPORTS_JSON_FORMAT=false \
+  --env TARGET_SCORE=8.0 \
   -- node dist/index.js
 ```
+
+**重要な環境変数の説明：**
+- `EVALUATION_PROMPT_PATH`: プロンプトテンプレートファイルのパス（必須）
+- `CODEX_SUPPORTS_JSON_FORMAT`: Codex CLIのJSON出力サポート
+  - README.mdではデフォルト`true`と記載
+  - .env.exampleでは`false`推奨（互換性重視）
+  - 実装はfalseの場合も対応済み（正規表現での抽出）
 
 ### 5.3 エラーハンドリング
 
@@ -249,6 +328,17 @@ console.error('[ERROR]', error.message);
    - リソースリークの防止
    - エラー処理の標準化
 
+4. **返却仕様の明確化**
+   - 評価結果は`score`, `rubric_scores`, `suggestions`を返却
+   - `pass`フィールドの扱い：
+     - **現在の実装**: `EvaluationResponse`型で`pass?: boolean`（オプション）
+     - **実際の動作**: `codex-evaluator.ts`は`pass`を返却しない（設計通り）
+     - **設計方針**: クライアント側で`score >= target_score`により判定
+   - この仕様により、クライアント側での柔軟な閾値変更が可能
+   - `metadata`フィールド（オプション）：
+     - `evaluation_time`: 評価処理時間（ミリ秒）
+     - `model_used`: 使用した評価モデル名
+
 ## 7. リスクと対策
 
 ### 7.1 移行リスク
@@ -278,67 +368,102 @@ console.error('[ERROR]', error.message);
 
 ## 8. 実装例
 
-### 8.1 最小限のMCPサーバー実装
+### 8.1 最小限のMCPサーバー実装（ESM版）
 
 ```typescript
 #!/usr/bin/env node
+// ESM版の完全実装例
+// 前提: tsconfig.json: "module": "NodeNext", package.json: "type": "module"
+
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { CodexEvaluator } from './codex-evaluator.js';  // ESMからCJSをimportする場合の注意
+import { fileURLToPath } from 'url';
+import path from 'path';
 
-async function main() {
-  const server = new Server({
+// ESMでの__dirname代替
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// サーバー初期化（capabilitiesを必ず指定）
+const server = new Server(
+  {
     name: 'codex-evaluator',
     version: '2.0.0'
-  });
-
-  // ツールの登録
-  server.setRequestHandler('tools/list', async () => ({
-    tools: [{
-      name: 'evaluate_document',
-      description: 'Evaluate document with Codex',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          content: { 
-            type: 'string',
-            description: 'Document to evaluate'
-          }
-        },
-        required: ['content']
-      }
-    }]
-  }));
-
-  // ツールの実行
-  server.setRequestHandler('tools/call', async (request) => {
-    const { name, arguments: args } = request.params;
-    
-    if (name === 'evaluate_document') {
-      // Codex評価ロジック
-      const result = await evaluateWithCodex(args.content);
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify(result)
-        }]
-      };
+  },
+  {
+    capabilities: {
+      tools: {}  // ツール機能を有効化（必須）
     }
-    
-    throw new Error(`Unknown tool: ${name}`);
-  });
+  }
+);
 
-  // Stdioトランスポートで起動
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
+// ツールの登録
+server.setRequestHandler('tools/list', async () => ({
+  tools: [{
+    name: 'evaluate_document',
+    description: 'Evaluate document with Codex',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        content: { 
+          type: 'string',
+          description: 'Document to evaluate'
+        },
+        target_score: {
+          type: 'number',
+          description: 'Target score (default: 8.0)'
+        }
+      },
+      required: ['content']  // contentは必須、target_scoreはオプション
+    }
+  }]
+}));
+
+// ツールの実行
+server.setRequestHandler('tools/call', async (request) => {
+  const { name, arguments: args } = request.params;
   
-  console.error('MCP Server started (stdio mode)');
-}
+  if (name === 'evaluate_document') {
+    const startTime = Date.now();
+    const evaluator = new CodexEvaluator();
+    const result = await evaluator.evaluate({
+      content: String(args.content),
+      target_score: args.target_score
+    });
+    
+    // 返却データの構築
+    const response = {
+      score: result.score,
+      rubric_scores: result.rubric_scores,
+      suggestions: result.suggestions || [],
+      metadata: {
+        evaluation_time: Date.now() - startTime,
+        model_used: process.env.USE_MOCK_EVALUATOR === 'true' ? 'mock' : 'codex'
+      }
+      // 注: passフィールドは含めない（クライアント側で判定）
+    };
+    
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify(response)
+      }]
+    };
+  }
+  
+  throw new Error(`Unknown tool: ${name}`);
+});
 
-main().catch(console.error);
+// Stdioトランスポートで起動
+const transport = new StdioServerTransport();
+await server.connect(transport);
+
+console.error('MCP Server started (stdio mode)');
 ```
 
 ### 8.2 Claude Code登録スクリプト
 
+#### Unix/macOS版
 ```bash
 #!/bin/bash
 # install-mcp.sh
@@ -350,16 +475,48 @@ cd mcp-server
 npm install
 npm run build
 
-# Claude Codeに登録
+# Claude Codeに登録（全環境変数を含む）
 claude mcp add codex-evaluator \
   --env CODEX_TIMEOUT=300000 \
   --env USE_MOCK_EVALUATOR=false \
   --env TARGET_SCORE=8.0 \
+  --env EVALUATION_PROMPT_PATH=../prompts/evaluation-prompt.txt \
+  --env CODEX_SUPPORTS_JSON_FORMAT=false \
   -- node "$(pwd)/dist/index.js"
 
 echo "Installation complete!"
 echo "Restart Claude Code to use the codex-evaluator tools."
 ```
+
+#### Windows PowerShell版
+```powershell
+# install-mcp.ps1
+
+Write-Host "Installing LoopSmith MCP Server..."
+
+# ビルド
+Set-Location mcp-server
+npm install
+npm run build
+
+# Claude Codeに登録
+$currentPath = Get-Location
+claude mcp add codex-evaluator `
+  --env CODEX_TIMEOUT=300000 `
+  --env USE_MOCK_EVALUATOR=false `
+  --env TARGET_SCORE=8.0 `
+  --env EVALUATION_PROMPT_PATH=../prompts/evaluation-prompt.txt `
+  --env CODEX_SUPPORTS_JSON_FORMAT=false `
+  -- node "$currentPath\dist\index.js"
+
+Write-Host "Installation complete!"
+Write-Host "Restart Claude Code to use the codex-evaluator tools."
+```
+
+**注意事項：**
+- `EVALUATION_PROMPT_PATH`: プロンプトファイルの正しいパスを指定（必須）
+- `CODEX_SUPPORTS_JSON_FORMAT`: 互換性のため`false`を推奨
+- Windows環境では`cmd /c`ラッパーが必要な場合があります
 
 ## 9. 結論
 
@@ -392,7 +549,27 @@ echo "Restart Claude Code to use the codex-evaluator tools."
 - [Claude Code MCP設定ガイド](https://docs.anthropic.com/en/docs/claude-code/mcp)
 - [@modelcontextprotocol/sdk](https://www.npmjs.com/package/@modelcontextprotocol/sdk)
 
-## 付録B: 用語集
+## 付録B: ESM移行の詳細
+
+CJSからESMへの移行については、別途作成した[ESM移行ガイド](./esm-migration-guide.md)を参照してください。
+
+### 最小変更セット（ESM移行時）
+
+1. **設定ファイル**
+   - `package.json`: `"type": "module"`を追加
+   - `tsconfig.json`: `"module": "NodeNext"`に変更
+
+2. **コード変更**
+   - `__dirname` → `path.dirname(fileURLToPath(import.meta.url))`
+   - `require()` → `import`文（拡張子付き）
+   - CJSモジュール → デフォルトインポート後に分割代入
+
+3. **CODEX_TIMEOUT制限**
+   - デフォルト: 5分（300000ms）
+   - 最大: 30分（1800000ms）
+   - 30分を超える設定は自動的に30分に制限
+
+## 付録C: 用語集
 
 | 用語 | 説明 |
 |------|------|
@@ -401,8 +578,11 @@ echo "Restart Claude Code to use the codex-evaluator tools."
 | **JSON-RPC** | JSON形式のRemote Procedure Call プロトコル |
 | **トランスポート** | 通信の物理層/転送方式 |
 | **サブプロセス** | 親プロセスから起動される子プロセス |
+| **ESM** | ECMAScript Modules - JavaScriptの標準モジュールシステム |
+| **CJS** | CommonJS - Node.jsの従来のモジュールシステム |
+| **Capabilities** | MCPサーバーが提供する機能のセット |
 
 ---
 
 *作成日: 2025年1月*  
-*バージョン: 1.0*
+*バージョン: 1.1*

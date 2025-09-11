@@ -7,14 +7,20 @@ export interface EvaluationRubric {
 
 export interface EvaluationRequest {
   content: string;
-  rubric?: EvaluationRubric;
+  rubric?: EvaluationRubric;  // Deprecated - use weights instead
+  weights?: {
+    completeness: number;
+    accuracy: number;
+    clarity: number;
+    usability: number;
+  };
   target_score?: number;
 }
 
 export interface EvaluationResponse {
   score: number;
   rubric_scores: EvaluationRubric;
-  pass: boolean;
+  pass?: boolean;  // Optional - client determines based on score >= target_score
   suggestions: string[];
   metadata?: {
     iteration?: number;

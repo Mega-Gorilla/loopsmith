@@ -32,7 +32,22 @@ export class CodexEvaluator {
   }
 
   async evaluate(request: EvaluationRequest): Promise<EvaluationResponse> {
-    const rubric = request.rubric || this.defaultRubric;
+    // weightsが指定されている場合は使用、そうでなければrubricまたはデフォルトを使用
+    let rubric: EvaluationRubric;
+    if (request.weights) {
+      // weightsを正規化（%表記から小数へ）
+      const total = request.weights.completeness + request.weights.accuracy + 
+                   request.weights.clarity + request.weights.usability;
+      rubric = {
+        completeness: request.weights.completeness / total,
+        accuracy: request.weights.accuracy / total,
+        clarity: request.weights.clarity / total,
+        usability: request.weights.usability / total
+      };
+    } else {
+      rubric = request.rubric || this.defaultRubric;
+    }
+    
     const targetScore = request.target_score || this.targetScore;
     
     // 評価プロンプトの構築

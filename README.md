@@ -13,7 +13,8 @@ LoopSmithは、Claude Codeが生成したドキュメントをCodex CLIで自動
 - 🔄 **自動改善ループ**: Claude Code側で目標スコア（デフォルト8.0/10）達成まで自動的に改善を制御
 - 📊 **カスタマイズ可能な評価基準**: 完全性、正確性、明確性、実用性の4つの観点で評価
 - 🔧 **プロンプトカスタマイズ**: 評価プロンプトを外部ファイルから読み込み可能
-- 🌐 **WebSocket通信**: MCPプロトコル準拠の独自実装によるWebSocketサーバー
+- 🚀 **標準MCPプロトコル準拠**: stdio通信による標準実装（v2.0）
+- 🌐 **レガシーWebSocket対応**: 後方互換性のためWebSocketサーバーも提供
 - 🔒 **セキュアな認証**: Codex CLIの独自認証システムを使用
 - 📈 **リアルタイム監視**: ダッシュボード機能でブラウザから評価状況を監視可能（オプション）
 
@@ -50,27 +51,54 @@ codex login
 
 ## 使用方法
 
-### 1. MCPサーバーの起動
+### クイックスタート（推奨：標準MCPサーバー）
+
+#### 1. ビルドとセットアップ
 
 ```bash
 cd mcp-server
+npm install
 npm run build
-npm start
 ```
 
-### 2. Claude CodeへのMCPサーバー登録
+#### 2. Claude CodeへのMCPサーバー登録
 
-プロジェクトディレクトリで以下のコマンドを実行:
+**macOS/Linux** (リポジトリルートから実行):
 
 ```bash
-# ローカルスコープで登録（推奨）
-claude mcp add codex-evaluator --env MCP_PORT=23100 -- node mcp-server/dist/server.js
+# 最小設定（絶対パス使用）
+claude mcp add codex-evaluator -- node "$(pwd)/mcp-server/dist/server-stdio.js"
 
-# または、プロジェクトスコープで登録（チーム共有用）
-claude mcp add --scope project codex-evaluator --env MCP_PORT=23100 -- node mcp-server/dist/server.js
+# 推奨設定（環境変数込み）
+claude mcp add codex-evaluator \
+  --env USE_MOCK_EVALUATOR=false \
+  --env TARGET_SCORE=8.0 \
+  --env CODEX_TIMEOUT=300000 \
+  --env CODEX_SUPPORTS_JSON_FORMAT=false \
+  -- node "$(pwd)/mcp-server/dist/server-stdio.js"
 ```
 
-### 3. 接続確認
+**Windows PowerShell** (リポジトリルートから実行):
+
+```powershell
+# 最小設定（絶対パス使用）
+claude mcp add codex-evaluator -- node "$PWD\mcp-server\dist\server-stdio.js"
+
+# 推奨設定（環境変数込み）
+claude mcp add codex-evaluator `
+  --env USE_MOCK_EVALUATOR=false `
+  --env TARGET_SCORE=8.0 `
+  --env CODEX_TIMEOUT=300000 `
+  --env CODEX_SUPPORTS_JSON_FORMAT=false `
+  -- node "$PWD\mcp-server\dist\server-stdio.js"
+```
+
+**注意**: 
+- ビルド（`npm run build`）実行後にdist/server-stdio.jsが生成されます
+- 相対パスではなく絶対パスの使用を推奨します
+- `CODEX_SUPPORTS_JSON_FORMAT=false`は互換性のため推奨
+
+#### 3. 接続確認
 
 ```bash
 # 登録済みMCPサーバーの確認
@@ -84,18 +112,30 @@ claude mcp list
 # evaluate_documentツールが利用可能なことを確認
 ```
 
-### 4. 自動評価の実行
+#### 4. 自動評価の実行
+
+Claude Code内で以下のコマンドを実行:
 
 ```
 > 以下の内容でドキュメントを作成し、スコア8.0以上になるまで自動改善してください:
 「APIリファレンスドキュメント」
 ```
 
-**注意**: 評価結果には`pass`フィールドは含まれません。合格判定は `score >= target_score` で行ってください。
+**評価パラメータ** (evaluate_documentツール):
+- `content` (必須): 評価対象のドキュメント
+- `weights` (推奨): 評価基準の重み
+  - `completeness`: 完全性の重み (0-100, デフォルト: 30)
+  - `accuracy`: 正確性の重み (0-100, デフォルト: 30)
+  - `clarity`: 明確性の重み (0-100, デフォルト: 20)
+  - `usability`: 実用性の重み (0-100, デフォルト: 20)
+- `target_score`: 目標スコア (デフォルト: 8.0)
+- `rubric` (非推奨): 旧評価基準フォーマット
 
-### 5. ダッシュボード監視（オプション）
+**注意**: 評価結果の`pass`フィールドはオプションです。合格判定は `score >= target_score` で行ってください。
 
-リアルタイムで評価状況を監視したい場合：
+### ダッシュボード監視（オプション）
+
+リアルタイムで評価状況を監視したい場合（WebSocketサーバーとは独立動作）：
 
 ```bash
 # 統合サーバーの起動（MCPサーバー + ダッシュボード）
@@ -110,16 +150,18 @@ npm run start:integrated
 
 ## 設定
 
-### 環境変数 (.env)
+### 環境変数
+
+環境変数はClaude Codeへの登録時に`--env`オプションで指定するか、`.env`ファイルで設定できます。
 
 | 変数名 | 説明 | デフォルト値 | 備考 |
 |--------|------|--------------|------|
-| `MCP_PORT` | MCPサーバーのポート | 23100 | |
+| `MCP_PORT` | WebSocketサーバーのポート | 23100 | レガシー実装のみ |
 | `LOG_LEVEL` | ログレベル | info | |
 | `MAX_ITERATIONS` | 最大改善回数 | 5 | **現在サーバー側未使用**（将来拡張用） |
 | `USE_MOCK_EVALUATOR` | モック評価器を使用 | false | |
 | `TARGET_SCORE` | 目標スコア | 8.0 | |
-| `EVALUATION_PROMPT_PATH` | 評価プロンプトファイルパス | ../prompts/evaluation-prompt.txt | |
+| `EVALUATION_PROMPT_PATH` | 評価プロンプトファイルパス | （未指定） | 既定: mcp-server/prompts/evaluation-prompt.txt |
 | `CODEX_TIMEOUT` | Codexタイムアウト時間（ミリ秒） | 300000 | 5分（最大30分まで設定可能） |
 | `CODEX_MAX_BUFFER` | Codex出力バッファサイズ | 20971520 | |
 | `CODEX_SUPPORTS_JSON_FORMAT` | --format jsonオプションのサポート | true | .env.exampleでは互換性のためfalse推奨 |
@@ -127,7 +169,7 @@ npm run start:integrated
 
 ### プロンプトのカスタマイズ
 
-評価プロンプトは `mcp-server/prompts/` ディレクトリ内のテキストファイルで管理されています:
+評価プロンプトは既定で `mcp-server/prompts/` ディレクトリ内のテキストファイルを使用します。必要に応じて`EVALUATION_PROMPT_PATH`環境変数で上書き可能:
 
 - `evaluation-prompt.txt`: 日本語プロンプト
 - `evaluation-prompt-en.txt`: 英語プロンプト
@@ -152,6 +194,10 @@ npm run build
 
 ```bash
 cd mcp-server
+# 標準stdioサーバー開発モード
+npm run dev:stdio
+
+# レガシーWebSocketサーバー開発モード
 npm run dev
 ```
 
@@ -159,14 +205,11 @@ npm run dev
 
 ```bash
 cd mcp-server
+# stdioサーバーテスト
+npm run test:stdio
+
+# WebSocketサーバーテスト
 npm test
-```
-
-### 統合テスト
-
-```bash
-cd mcp-server
-node scripts/test-integration.js
 ```
 
 ## プロジェクト構造
@@ -175,27 +218,38 @@ node scripts/test-integration.js
 loopsmith/
 ├── mcp-server/              # MCPサーバー実装
 │   ├── src/                # TypeScriptソースコード
-│   │   ├── server.ts       # MCPサーバー本体
+│   │   ├── server-stdio.js # 標準MCPサーバー（stdio、推奨）
+│   │   ├── server.ts       # レガシーWebSocketサーバー
 │   │   ├── server-with-dashboard.ts # 統合サーバー（MCP + ダッシュボード）
 │   │   ├── dashboard.ts    # ダッシュボードサーバー
 │   │   ├── codex-evaluator.ts      # Codex評価器
 │   │   └── codex-evaluator-mock.ts # モック評価器
 │   ├── public/             # ダッシュボードWeb UI
-│   ├── prompts/            # 評価プロンプトテンプレート（ルートに移動）
+│   ├── prompts/            # 評価プロンプトテンプレート（デフォルト）
 │   ├── scripts/            # テスト/セットアップスクリプト
 │   └── dist/               # ビルド出力 (ギット無視)
-├── prompts/                # 評価プロンプトテンプレート
+├── prompts/                # 追加評価プロンプトテンプレート（任意）
 ├── docs/                   # ドキュメント
-│   └── architecture.md     # アーキテクチャ設計書
+│   ├── architecture.md     # アーキテクチャ設計書
+│   ├── mcp-implementation-analysis.md # MCP実装分析
+│   ├── migration-guide.md  # 移行ガイド
+│   └── esm-migration-guide.md # ESM移行ガイド
 ├── README.md               # このファイル
 └── LICENSE                 # MITライセンス
 ```
 
-**注意**: 本プロジェクトはCommonJS形式で実装されています。
+**アーキテクチャ**:
+- **v2.0**: 標準MCPプロトコル準拠のstdio実装（推奨）
+- **v1.0**: WebSocketベースの独自実装（レガシー）
+- 詳細は[docs/mcp-implementation-analysis.md](docs/mcp-implementation-analysis.md)を参照
 
 ## アーキテクチャ
 
 詳細なアーキテクチャ図とシーケンス図は[docs/architecture.md](docs/architecture.md)を参照してください。
+
+MCP実装の詳細分析は[docs/mcp-implementation-analysis.md](docs/mcp-implementation-analysis.md)を参照してください。
+
+WebSocketからstdioへの移行ガイドは[docs/migration-guide.md](docs/migration-guide.md)を参照してください。
 
 ### 基本的な動作フロー
 
@@ -214,13 +268,15 @@ npm install -g @openai/codex
 codex --version
 ```
 
-### ポートが使用中
+### ポートが使用中（レガシーWebSocket実装のみ）
 
 `.env`ファイルで`MCP_PORT`を変更:
 
 ```
 MCP_PORT=23101
 ```
+
+**注意**: この問題は標準stdio実装では発生しません。
 
 ### 認証エラー
 

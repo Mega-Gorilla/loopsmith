@@ -91,12 +91,38 @@ class CodexMCPServer {
                     },
                     rubric: {
                       type: 'object',
-                      description: '評価基準',
+                      description: '評価基準（非推奨：weightsを使用してください）',
                       properties: {
                         completeness: { type: 'number' },
                         accuracy: { type: 'number' },
                         clarity: { type: 'number' },
                         usability: { type: 'number' }
+                      }
+                    },
+                    weights: {
+                      type: 'object',
+                      description: '評価基準の重み（推奨）',
+                      properties: {
+                        completeness: { 
+                          type: 'number',
+                          description: '完全性の重み（0-100）',
+                          default: 30
+                        },
+                        accuracy: { 
+                          type: 'number',
+                          description: '正確性の重み（0-100）',
+                          default: 30
+                        },
+                        clarity: { 
+                          type: 'number',
+                          description: '明確性の重み（0-100）',
+                          default: 20
+                        },
+                        usability: { 
+                          type: 'number',
+                          description: '実用性の重み（0-100）',
+                          default: 20
+                        }
                       }
                     },
                     target_score: {

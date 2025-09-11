@@ -2,19 +2,25 @@
   "name": "codex-mcp-server",
   "version": "1.0.0",
   "description": "MCP Server for Claude Code × Codex Integration",
-  "main": "dist/server.js",
+  "main": "dist/index.js",
+  "bin": {
+    "loopsmith-mcp": "./dist/index.js"
+  },
   "engines": {
     "node": ">=18.0.0"
   },
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
+    "start:stdio": "node src/server-stdio.js",
     "dev": "nodemon --watch src --ext ts --exec ts-node src/server.ts",
+    "dev:stdio": "nodemon --watch src --ext js,ts --exec node src/server-stdio.js",
     "dashboard": "node dist/dashboard.js",
     "dashboard:dev": "nodemon --watch src --ext ts --exec ts-node src/dashboard.ts",
     "start:all": "npm run build && npm run dashboard",
     "start:integrated": "node dist/server-with-dashboard.js",
     "test": "node scripts/test-integration.js",
+    "test:stdio": "node scripts/test-stdio.js",
     "check-codex": "node -e \"require('child_process').exec('where codex || which codex || echo Codex CLI not found', (e,o) => console.log(o.trim()))\"",
     "setup:windows": "powershell -ExecutionPolicy Bypass -File scripts/setup-codex.ps1",
     "setup:unix": "bash scripts/setup-codex.sh"
