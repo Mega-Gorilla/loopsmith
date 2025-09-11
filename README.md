@@ -44,14 +44,7 @@ cp mcp-server/.env.example mcp-server/.env
 
 # .envファイルを編集して設定を調整
 
-# Codex CLIのセットアップ
-# Windows:
-npm run setup:windows
-
-# macOS/Linux:
-npm run setup:unix
-
-# Codex CLIの認証（初回のみ）
+# Codex CLIの認証（初回のみ、必要に応じて）
 codex login
 ```
 
@@ -65,19 +58,33 @@ npm run build
 npm start
 ```
 
-### 2. Claude Codeでの接続
+### 2. Claude CodeへのMCPサーバー登録
 
-Claude Code内で以下のコマンドを実行:
+プロジェクトディレクトリで以下のコマンドを実行:
 
+```bash
+# ローカルスコープで登録（推奨）
+claude mcp add codex-evaluator --env MCP_PORT=23100 -- node mcp-server/dist/server.js
+
+# または、プロジェクトスコープで登録（チーム共有用）
+claude mcp add --scope project codex-evaluator --env MCP_PORT=23100 -- node mcp-server/dist/server.js
 ```
-> /ide
-# "codex-evaluator" を選択
+
+### 3. 接続確認
+
+```bash
+# 登録済みMCPサーバーの確認
+claude mcp list
+
+# Claude Code内で確認
+> /mcp
+# codex-evaluatorが表示されることを確認
 
 > /tools
 # evaluate_documentツールが利用可能なことを確認
 ```
 
-### 3. 自動評価の実行
+### 4. 自動評価の実行
 
 ```
 > 以下の内容でドキュメントを作成し、スコア8.0以上になるまで自動改善してください:
@@ -86,7 +93,7 @@ Claude Code内で以下のコマンドを実行:
 
 **注意**: 評価結果には`pass`フィールドは含まれません。合格判定は `score >= target_score` で行ってください。
 
-### 4. ダッシュボード監視（オプション）
+### 5. ダッシュボード監視（オプション）
 
 リアルタイムで評価状況を監視したい場合：
 
