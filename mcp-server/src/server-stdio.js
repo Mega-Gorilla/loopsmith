@@ -14,6 +14,7 @@ const winston = require('winston');
 const path = require('path');
 const { spawn } = require('child_process');
 const http = require('http');
+const axios = require('axios').default;
 
 // Configure logger
 const logger = winston.createLogger({
@@ -135,6 +136,26 @@ async function launchDashboard() {
   }
 }
 
+// Function to send events to dashboard via HTTP
+async function sendDashboardEvent(event, data) {
+  if (process.env.ENABLE_DASHBOARD === 'false' || !dashboardPort) {
+    return;
+  }
+  
+  try {
+    await axios.post(`http://localhost:${dashboardPort}/api/event`, {
+      event,
+      data,
+      timestamp: new Date().toISOString()
+    }, {
+      timeout: 1000
+    });
+  } catch (error) {
+    // Silently fail if dashboard is not available
+    logger.debug('Failed to send event to dashboard:', error.message);
+  }
+}
+
 async function main() {
   try {
     // Debug: Log environment variables
@@ -243,6 +264,13 @@ async function main() {
             projectPath: args.project_path 
           });
 
+          // Send start event to dashboard
+          await sendDashboardEvent('evaluation:start', {
+            document: args.content?.substring(0, 200) + '...',
+            projectPath: args.project_path,
+            targetScore: args.target_score
+          });
+
           const evaluationRequest = {
             content: args.content,
             target_score: args.target_score || parseFloat(process.env.TARGET_SCORE || '8.0'),
@@ -255,12 +283,18 @@ async function main() {
             project_path: args.project_path  // Claude Codeの実行ディレクトリ
           };
 
+          // Send progress event
+          await sendDashboardEvent('evaluation:progress', { progress: 50 });
+
           const result = await evaluator.evaluate(evaluationRequest);
 
           logger.info('Evaluation completed', {
             score: result.score,
             pass: result.score >= evaluationRequest.target_score
           });
+
+          // Send completion event to dashboard
+          await sendDashboardEvent('evaluation:complete', result);
 
           // Return evaluation result
           return {
@@ -273,6 +307,12 @@ async function main() {
           };
         } catch (error) {
           logger.error('Evaluation failed:', error);
+          
+          // Send error event to dashboard
+          await sendDashboardEvent('evaluation:error', {
+            error: error.message,
+            stack: error.stack
+          });
           
           return {
             content: [

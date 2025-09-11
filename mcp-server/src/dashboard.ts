@@ -96,6 +96,31 @@ export class DashboardServer extends EventEmitter {
       res.json({ success: true });
     });
 
+    // API: MCPサーバーからのイベント受信
+    this.app.post('/api/event', (req, res) => {
+      const { event, data, timestamp } = req.body;
+      
+      // Handle different event types
+      switch (event) {
+        case 'evaluation:start':
+          this.startEvaluation(data.document);
+          break;
+        case 'evaluation:progress':
+          this.updateProgress(data.progress);
+          break;
+        case 'evaluation:complete':
+          this.completeEvaluation(data);
+          break;
+        case 'evaluation:error':
+          this.errorEvaluation(data);
+          break;
+        default:
+          this.logger.warn(`Unknown event type: ${event}`);
+      }
+      
+      res.json({ success: true });
+    });
+
     // ヘルスチェック
     this.app.get('/health', (req, res) => {
       res.json({ status: 'ok', uptime: process.uptime() });
