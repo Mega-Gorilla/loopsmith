@@ -172,11 +172,11 @@ async function main() {
     await client.evaluateDocument(documentContent);
     
     // 結果を待つ（Codex処理時間を考慮）
-    console.log('⏳ Codex CLIでの評価処理中... (最大10分)\n');
+    console.log('⏳ Codex CLIでの評価処理中... (最大30分)\n');
     console.log('  ※ Codexは大規模なドキュメント評価に時間がかかります。しばらくお待ちください...\n');
     
-    // 10分間、5秒ごとに評価完了をチェック
-    const maxWaitTime = 600000; // 10分
+    // 30分間、5秒ごとに評価完了をチェック
+    const maxWaitTime = 1800000; // 30分
     const checkInterval = 5000; // 5秒
     let elapsed = 0;
     let lastProgressReport = 0;
@@ -197,7 +197,7 @@ async function main() {
     if (client.evaluationComplete) {
       console.log('\n✅ 評価が完了しました！');
     } else {
-      console.log('\n⚠️ タイムアウト: 10分経過しても評価が完了しませんでした。');
+      console.log('\n⚠️ タイムアウト: 30分経過しても評価が完了しませんでした。');
     }
     
   } catch (error) {

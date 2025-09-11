@@ -19,7 +19,14 @@ export class CodexEvaluator {
 
   constructor() {
     // 環境変数から設定を読み込み
-    this.codexTimeout = parseInt(process.env.CODEX_TIMEOUT || '120000');
+    // タイムアウト: デフォルト5分（300000ms）、最大30分（1800000ms）
+    const timeoutValue = parseInt(process.env.CODEX_TIMEOUT || '300000');
+    this.codexTimeout = Math.min(timeoutValue, 1800000); // 最大30分に制限
+    
+    if (timeoutValue > 1800000) {
+      console.warn(`⚠️ CODEX_TIMEOUT (${timeoutValue}ms) が最大値30分を超えています。30分に制限されます。`);
+    }
+    
     this.codexMaxBuffer = parseInt(process.env.CODEX_MAX_BUFFER || '20971520');
     this.targetScore = parseFloat(process.env.TARGET_SCORE || '8.0');
   }

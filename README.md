@@ -113,7 +113,7 @@ npm run start:integrated
 | `USE_MOCK_EVALUATOR` | モック評価器を使用 | false | |
 | `TARGET_SCORE` | 目標スコア | 8.0 | |
 | `EVALUATION_PROMPT_PATH` | 評価プロンプトファイルパス | ../prompts/evaluation-prompt.txt | |
-| `CODEX_TIMEOUT` | Codexタイムアウト時間（ミリ秒） | 120000 | 10分まで延長可能 |
+| `CODEX_TIMEOUT` | Codexタイムアウト時間（ミリ秒） | 300000 | 5分（最大30分まで設定可能） |
 | `CODEX_MAX_BUFFER` | Codex出力バッファサイズ | 20971520 | |
 | `CODEX_SUPPORTS_JSON_FORMAT` | --format jsonオプションのサポート | true | .env.exampleでは互換性のためfalse推奨 |
 | `DASHBOARD_PORT` | ダッシュボードのポート | 3000 | start:integrated使用時 |

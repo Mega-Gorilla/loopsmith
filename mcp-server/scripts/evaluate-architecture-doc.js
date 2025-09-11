@@ -46,7 +46,7 @@ async function evaluateArchitectureDoc() {
       if (message.result && message.result.serverInfo) {
         console.log('✅ 初期化完了');
         console.log('\n🔍 ドキュメント評価を開始...');
-        console.log('⏳ Codexによる評価を実行中（最大10分）...\n');
+        console.log('⏳ Codexによる評価を実行中（最大30分）...\n');
         
         const evalMessage = {
           jsonrpc: '2.0',
@@ -75,13 +75,13 @@ async function evaluateArchitectureDoc() {
           process.stdout.write(`\r⏱️  評価実行中... ${elapsed}秒経過`);
         }, 1000);
         
-        // タイムアウト処理を10分に延長
+        // タイムアウト処理を30分に延長
         setTimeout(() => {
           clearInterval(progressInterval);
-          console.error('\n❌ タイムアウト: 10分以内に応答がありませんでした');
+          console.error('\n❌ タイムアウト: 30分以内に応答がありませんでした');
           ws.close();
           reject(new Error('Evaluation timeout'));
-        }, 600000); // 10分
+        }, 1800000); // 30分
       }
       
       // 評価結果受信

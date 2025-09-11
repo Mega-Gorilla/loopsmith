@@ -96,7 +96,7 @@ graph TB
 ### 3. 評価器 (Evaluator)
 #### Codex Evaluator (本番)
 - **実行方式**: child_process.spawn()
-- **タイムアウト**: 120秒（設定可能）
+- **タイムアウト**: デフォルト5分（最大30分まで設定可能）
 - **再試行**: 最大2回（指数バックオフ）
 - **JSON抽出**: 多段階パース戦略
 
@@ -148,7 +148,7 @@ TARGET_SCORE=8.0            # 目標スコア
 MAX_ITERATIONS=5            # 最大改善回数
 
 # Codex設定
-CODEX_TIMEOUT=120000        # タイムアウト(ms)
+CODEX_TIMEOUT=300000        # タイムアウト(ms) デフォルト5分、最大30分
 CODEX_MAX_BUFFER=20971520   # バッファサイズ
 CODEX_SUPPORTS_JSON_FORMAT=true  # JSON出力
 
@@ -238,7 +238,7 @@ function evaluationLoop(document) {
 
 ### プロセス分離
 - Codex実行: 子プロセスで分離
-- タイムアウト: 120秒でプロセス終了
+- タイムアウト: 5分（最大30分）でプロセス終了
 - バッファ制限: 20MBで切り捨て
 
 ## パフォーマンス最適化
