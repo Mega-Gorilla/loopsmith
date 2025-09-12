@@ -82,6 +82,7 @@ export class DashboardServer extends EventEmitter {
   private setupRoutes() {
     // API: 評価履歴の取得
     this.app.get('/api/history', (req, res) => {
+      res.set('Cache-Control', 'no-store');  // キャッシュ無効化
       res.json({
         history: this.evaluationHistory.slice(-10),
         stats: this.calculateStats()
@@ -90,6 +91,7 @@ export class DashboardServer extends EventEmitter {
 
     // API: 現在の評価状態
     this.app.get('/api/status', (req, res) => {
+      res.set('Cache-Control', 'no-store');  // キャッシュ無効化
       res.json({
         current: this.currentEvaluation,
         serverStatus: 'running',
@@ -99,6 +101,7 @@ export class DashboardServer extends EventEmitter {
 
     // API: ログの取得
     this.app.get('/api/logs', (req, res) => {
+      res.set('Cache-Control', 'no-store');  // キャッシュ無効化
       const limit = parseInt(req.query.limit as string) || 100;
       res.json({
         logs: this.logs.slice(-limit)
@@ -179,6 +182,11 @@ export class DashboardServer extends EventEmitter {
       socket.on('history:detail', (id: string) => {
         const item = this.evaluationHistory.find(h => h.id === id);
         socket.emit('history:detail:response', item);
+      });
+
+      // 統計情報要求
+      socket.on('stats:request', () => {
+        socket.emit('stats:response', this.calculateStats());
       });
     });
   }

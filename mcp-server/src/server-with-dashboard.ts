@@ -168,8 +168,12 @@ class IntegratedServer {
         case 'evaluate_document': {
           const evalRequest: EvaluationRequest = args as EvaluationRequest;
           
-          // ダッシュボードに評価開始を通知
-          this.dashboard.startEvaluation(`File: ${evalRequest.document_path}`);
+          // ダッシュボードに評価開始を通知（適切なオブジェクト形式で）
+          this.dashboard.startEvaluation({
+            document: `File: ${evalRequest.document_path}`,
+            projectPath: evalRequest.project_path,
+            targetScore: evalRequest.target_score
+          });
           
           // 進捗を定期的に更新
           let progress = 0;

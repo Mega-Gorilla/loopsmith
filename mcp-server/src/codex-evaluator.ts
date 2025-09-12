@@ -281,18 +281,60 @@ export class CodexEvaluator {
   }
 
   private getDefaultPromptTemplate(): string {
-    return `以下のドキュメント/実装プランを評価してください。
+    return `<task>
+技術ドキュメントの評価を行います。
 
-必須項目（JSONフォーマットで含めてください）:
+<context>
+以下の内容が実装準備として十分な品質かを判定します。
+</context>
+
+<constraints>
+- 読み取りのみ可能（修正・作成・削除は禁止）
+- 文字エンコーディングの警告や表示上の文字化けは無視してください
+</constraints>
+
+<process>
+1. ドキュメントの種類と目的を理解する
+2. 必要に応じて外部情報を収集する（Web検索、公式ドキュメント等）
+3. 内容に応じた適切な評価基準を設定し、分析する
+</process>
+
+<evaluation_criteria>
+最低限、以下の観点を評価してください：
+- 実装可能性：現実的に実装できるか
+- 技術的妥当性：アプローチが適切か
+- 情報の充足性：必要な詳細が記載されているか
+
+ドキュメントの性質に応じて、重要な評価観点を自律的に追加してください。
+（例：API設計、セキュリティ、パフォーマンス、複数案の比較など）
+</evaluation_criteria>
+
+<output_format>
 {
-  "ready_for_implementation": <実装に移れるか true/false>,
-  "score": <総合評価スコア 0-10>
+  "ready_for_implementation": boolean,
+  "score": number (0-10),
+  "conclusion": string,
+  "rationale": string,
+  "analysis": {
+    "strengths": array,
+    "weaknesses": array,
+    "technical_assessment": string,
+    "recommended_approach": string|null
+  },
+  "recommendations": array|null,
+  "blockers": array|null,
+  "rubric_scores": {
+    "completeness": number,
+    "accuracy": number,
+    "clarity": number,
+    "usability": number
+  }
 }
-
-上記の必須項目以外は、評価内容に応じて適切な形式で分析結果を提供してください。
+</output_format>
 
 評価対象:
-{{document_content}}`;
+{{document_content}}
+</task>`;
   }
 
   private buildEvaluationPromptWithPath(filePath: string): string {

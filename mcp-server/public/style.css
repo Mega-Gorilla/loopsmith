@@ -134,6 +134,52 @@ body {
     padding: 1rem;
 }
 
+.evaluation-completed {
+    padding: 1rem;
+}
+
+.score-display {
+    text-align: center;
+    margin: 1rem 0;
+}
+
+.score-value {
+    font-size: 2.5rem;
+    font-weight: bold;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.score-max {
+    font-size: 1.2rem;
+    color: #666;
+}
+
+.pass-indicator {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-weight: bold;
+    margin: 1rem 0;
+}
+
+.pass-indicator.pass {
+    background: #d4edda;
+    color: #155724;
+}
+
+.pass-indicator.fail {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.detail-button {
+    margin-top: 1rem;
+    width: 100%;
+}
+
 .progress-bar {
     width: 100%;
     height: 30px;

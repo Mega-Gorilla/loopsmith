@@ -30,7 +30,12 @@
         <main class="main-content">
             <!-- 左側パネル: 現在の評価 -->
             <section class="panel current-evaluation">
-                <h2>📊 現在の評価</h2>
+                <div class="panel-header">
+                    <h2>📊 現在の評価</h2>
+                    <button class="btn btn-small" onclick="refreshDashboard()" title="手動更新">
+                        🔄 更新
+                    </button>
+                </div>
                 <div id="currentEvaluation" class="evaluation-content">
                     <div class="no-evaluation">
                         <p>評価待機中...</p>

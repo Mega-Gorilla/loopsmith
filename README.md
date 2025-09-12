@@ -99,11 +99,10 @@ claude mcp add loopsmith `
 ```
 
 **注意**: 
-- src/server-stdio.jsを直接使用（stdioサーバーはビルド不要）
-- ダッシュボード機能を使用する場合は事前にビルドが必要：`npm run build`
+- ビルドは必須です：`npm run build`（server-stdio.jsがdist/codex-evaluator.jsをrequireするため）
 - 相対パスではなく絶対パスの使用を推奨します
 - ダッシュボードはClaude Code起動時に自動的にブラウザで開きます
-- **ダッシュボード接続の注意**: DASHBOARD_PORTをデフォルトの3000から変更する場合、public/app.jsの接続先も変更が必要（現在は3000固定）
+- ダッシュボードはDASSHBOARD_PORTで指定したポートで自動的に起動します
 
 #### 3. 接続確認
 
@@ -121,31 +120,41 @@ claude mcp list
 
 #### 4. 自動評価の実行
 
-Claude Code内で以下のコマンドを実行:
+Claude Code内での使用例:
 
 ```
-> 以下の内容でドキュメントを作成し、スコア8.0以上になるまで自動改善してください:
-「APIリファレンスドキュメント」
+# ドキュメントを評価
+> /tool evaluate_document document_path="/path/to/your/document.md" target_score=8.0
+
+# プロジェクトコンテキストを含めた評価
+> /tool evaluate_document document_path="/path/to/doc.md" project_path="/path/to/project" target_score=8.0
+```
+
+または、自動改善ループの実行:
+
+```
+> 以下のドキュメントを評価し、スコア8.0以上になるまで改善してください:
+/path/to/document.md
 ```
 
 **project_pathパラメータの活用**:
 ```javascript
 // Claude Codeが自動的に現在のプロジェクトパスを渡す場合
 evaluate_document({
-  content: "ドキュメント内容",
+  document_path: "/path/to/document.md",
   project_path: process.cwd()  // 自動で設定される
 })
 
 // または、特定のプロジェクトを明示的に指定
 evaluate_document({
-  content: "ドキュメント内容",
+  document_path: "/path/to/document.md",
   project_path: "/path/to/target/project"
 })
 ```
 ※ project_path未指定時は、MCPサーバー起動時のカレントディレクトリが使用されます。
 
 **評価パラメータ** (evaluate_documentツール):
-- `content` (必須): 評価対象のドキュメント
+- `document_path` (必須): 評価対象ドキュメントのファイルパス
 - `target_score`: 目標スコア (デフォルト: 8.0)
 - `project_path`: プロジェクトディレクトリパス（Codexが読み取り専用でアクセス。未指定時はMCPプロセスのCWDを使用）
 - `evaluation_mode`: 評価モード ('flexible' | 'strict', デフォルト: 'flexible')
@@ -226,7 +235,7 @@ npm run dashboard
 | `LOG_LEVEL` | ログレベル | info | |
 | `USE_MOCK_EVALUATOR` | モック評価器を使用 | false | |
 | `TARGET_SCORE` | 目標スコア | 8.0 | |
-| `EVALUATION_PROMPT_PATH` | 評価プロンプトファイルパス | （未指定） | 未指定時は mcp-server/prompts/evaluation-prompt.txt を自動参照 |
+| `EVALUATION_PROMPT_PATH` | 評価プロンプトファイルパス | （未指定） | 未指定時は mcp-server/prompts/evaluation-prompt-filepath.txt を自動参照 |
 | `CODEX_TIMEOUT` | Codexタイムアウト時間（ミリ秒） | 300000 | 5分（最大30分まで設定可能） |
 | `CODEX_MAX_BUFFER` | Codex出力バッファサイズ | 20971520 | |
 | `CODEX_SUPPORTS_JSON_FORMAT` | --format jsonオプションのサポート | true | .env.exampleでは互換性のためfalse推奨 |
@@ -236,10 +245,10 @@ npm run dashboard
 
 ### プロンプトのカスタマイズ
 
-評価プロンプトは `mcp-server/prompts/evaluation-prompt.txt` を使用します。
+評価プロンプトは `mcp-server/prompts/evaluation-prompt-filepath.txt` を使用します。
 
 プロンプト内では以下の変数が使用可能:
-- `{{document_content}}`: 評価対象のドキュメント
+- `{{document_path}}`: 評価対象ドキュメントのファイルパス
 
 柔軟な評価モード（デフォルト）では、Codexが自然な形式で以下を返します:
 - 必須: `ready_for_implementation` (実装可否) と `score` (評価スコア)
@@ -296,10 +305,7 @@ loopsmith/
 │   └── dist/               # ビルド出力 (ギット無視)
 ├── prompts/                # 追加評価プロンプトテンプレート（任意）
 ├── docs/                   # ドキュメント
-│   ├── architecture.md     # アーキテクチャ設計書
-│   ├── mcp-implementation-analysis.md # MCP実装分析
-│   ├── migration-guide.md  # 移行ガイド
-│   └── esm-migration-guide.md # ESM移行ガイド
+│   └── architecture.md     # アーキテクチャ設計書
 ├── README.md               # このファイル
 └── LICENSE                 # MITライセンス
 ```
@@ -307,15 +313,10 @@ loopsmith/
 **アーキテクチャ**:
 - **v2.0**: 標準MCPプロトコル準拠のstdio実装（推奨）
 - **v1.0**: WebSocketベースの独自実装（レガシー）
-- 詳細は[docs/mcp-implementation-analysis.md](docs/mcp-implementation-analysis.md)を参照
 
 ## アーキテクチャ
 
 詳細なアーキテクチャ図とシーケンス図は[docs/architecture.md](docs/architecture.md)を参照してください。
-
-MCP実装の詳細分析は[docs/mcp-implementation-analysis.md](docs/mcp-implementation-analysis.md)を参照してください。
-
-WebSocketからstdioへの移行ガイドは[docs/migration-guide.md](docs/migration-guide.md)を参照してください。
 
 ### 基本的な動作フロー
 
@@ -336,13 +337,11 @@ codex --version
 
 ### ポートが使用中（レガシーWebSocket実装のみ）
 
-`.env`ファイルで`MCP_PORT`を変更:
+**注意**: この問題は推奨のstdio実装では発生しません。WebSocketバージョンを使用する場合のみ、`.env`ファイルで`MCP_PORT`を変更:
 
 ```
 MCP_PORT=23101
 ```
-
-**注意**: この問題は標準stdio実装では発生しません。
 
 ### 認証エラー
 
