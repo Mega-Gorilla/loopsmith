@@ -139,10 +139,11 @@ graph TB
   - `CODEX_WORKSPACE_PATH`: プロジェクトパス
 
 ### 4. OpenAI Codex CLI
-- **実行コマンド**: `codex exec --full-auto --skip-git-repo-check`
+- **実行コマンド**: `codex exec --full-auto --skip-git-repo-check --dangerously-bypass-approvals-and-sandboxes`
 - **認証**: ~/.config/codex/auth.json
 - **入出力**: stdin/stdout
 - **作業モード**: プロジェクトファイル読み取り専用
+- **注意**: `--dangerously-bypass-approvals-and-sandboxes`フラグは信頼できる環境でのみ使用
 
 ## データフロー
 
@@ -163,8 +164,34 @@ graph TB
 ```
 
 ### エラーハンドリング
+
+#### JSON-RPC 2.0エラー形式
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "request-id",
+  "error": {
+    "code": -32603,
+    "message": "Internal error",
+    "data": {
+      "formatted": "# ⚠️ 評価エラー\n\n詳細情報..."
+    }
+  }
+}
+```
+
+#### エラーコードと対処
+- **-32700**: パースエラー → JSON形式を確認
+- **-32600**: 無効なリクエスト → パラメータを確認
+- **-32601**: メソッド未定義 → ツール名を確認
+- **-32602**: 無効なパラメータ → 必須パラメータを確認
+- **-32603**: 内部エラー → ログを確認
+- **EVAL_TIMEOUT**: タイムアウト → CODEX_TIMEOUTを増加
+- **CODEX_NOT_FOUND**: CLI未検出 → インストールを確認
+
+#### 再試行戦略
 - **stdio切断**: プロセス再起動
-- **Codexタイムアウト**: 再試行（最大2回）
+- **Codexタイムアウト**: 指数バックオフで最大2回再試行
 - **JSON解析失敗**: 構造化テキストパースへフォールバック
 - **プロンプト読込失敗**: デフォルトテンプレート使用
 
@@ -230,13 +257,19 @@ mcp-server/prompts/
 
 ### プロセス分離
 - **MCPサーバー**: stdio通信でプロセス分離
-- **Codex実行**: 子プロセスでサンドボックス化
-- **ファイルアクセス**: project_path内に制限（読み取り専用）
+- **Codex実行**: 子プロセスで実行（--dangerously-bypass-approvals-and-sandboxesフラグにより承認とサンドボックスをバイパス）
+- **ファイルアクセス**: project_path内に制限（読み取り専用、workspace-read権限）
 
 ### 認証と通信
 - **MCP通信**: ローカルstdioのみ（ネットワーク非公開）
 - **Codex認証**: ローカル認証ファイル使用
 - **環境変数**: APIキーは保存しない
+- **CORS**: localhost全ポートからのアクセスを動的に許可（ダッシュボード用）
+
+### セキュリティ上の注意事項
+- **危険フラグの使用**: `--dangerously-bypass-approvals-and-sandboxes`は承認プロセスとサンドボックスを無効化するため、信頼できる環境でのみ使用
+- **ネットワークアクセス**: Codex CLIは評価時に外部APIと通信する可能性があるため、ファイアウォール設定に注意
+- **権限制御**: workspace-read権限でファイルアクセスを制限し、書き込み操作を防止
 
 ## パフォーマンス最適化
 
@@ -257,10 +290,20 @@ mcp-server/prompts/
 | 問題 | 原因 | 解決方法 |
 |------|------|----------|
 | MCP接続失敗 | パス設定誤り | src/server-stdio.js を使用 |
-| Codex実行失敗 | CLI未インストール | npm install -g @openai/codex |
-| 評価タイムアウト | 大規模ドキュメント | CODEX_TIMEOUT を増加 |
+| ビルドエラー | dist未生成 | `npm run build`を実行 |
+| Codex実行失敗 | CLI未インストール | `npm install -g @openai/codex` |
+| 認証エラー | Codex未認証 | `codex login`を実行 |
+| 評価タイムアウト | 大規模ドキュメント | CODEX_TIMEOUT を増加（最大1800000） |
+| バッファ超過 | 出力サイズ過大 | CODEX_MAX_BUFFER を増加 |
 | パース失敗 | 出力形式不正 | EVALUATION_MODE=flexible 使用 |
 | コンテキスト不足 | project_path未指定 | project_path パラメータ追加 |
+| Windows実行エラー | コマンド形式 | codex.cmdを使用、shell:trueを設定 |
+| ダッシュボード接続失敗 | ポート競合 | DASHBOARD_PORTを変更 |
+
+### ログファイル
+- **MCPサーバーログ**: `mcp-server/mcp-server-stdio.log`
+- **ダッシュボードログ**: `mcp-server/dashboard.log`
+- **ログレベル設定**: `LOG_LEVEL=debug`で詳細ログ出力
 
 ## ダッシュボード機能
 
@@ -272,9 +315,29 @@ mcp-server/prompts/
 
 ### 技術実装
 - **通信方式**: Socket.IO WebSocket + HTTP API
-- **ポート柔軟性**: 環境変数による動的ポート設定
+- **ポート柔軟性**: 環境変数による動的ポート設定（DASHBOARD_PORT）
 - **CORS対応**: localhost全ポートからのアクセスを関数ベースで動的許可（Express/Socket.IO共通）
-- **自動起動**: MCP起動時にダッシュボードとブラウザを自動起動
+- **自動起動**: MCP起動時にダッシュボードとブラウザを自動起動（ENABLE_DASHBOARD=true, AUTO_OPEN_BROWSER=true）
+
+### APIエンドポイント
+- `GET /api/history`: 評価履歴取得
+- `GET /api/status`: 現在の評価状態取得
+- `GET /api/logs?limit=n`: ログ取得（最新n件）
+- `POST /api/clear-history`: 履歴クリア
+- `POST /api/event`: イベント送信
+- `GET /health`: ヘルスチェック
+
+### Socket.IOイベント
+- `connect`: 接続確立
+- `disconnect`: 切断
+- `initial:data`: 初期データ送信
+- `log:new`: 新規ログ
+- `evaluation:started`: 評価開始
+- `evaluation:progress`: 進捗更新
+- `evaluation:completed`: 評価完了
+- `evaluation:error`: エラー発生
+- `history:cleared`: 履歴クリア通知
+- `stats:request/response`: 統計情報の要求/応答
 
 ## 今後の拡張計画
 

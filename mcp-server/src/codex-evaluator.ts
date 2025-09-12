@@ -20,7 +20,7 @@ export class CodexEvaluator {
   // キャッシュ機構
   private cache = new Map<string, { result: EvaluationResponse; timestamp: number }>();
   private cacheTTL = parseInt(process.env.CODEX_CACHE_TTL || '3600000'); // デフォルト1時間
-  private cacheEnabled = process.env.CODEX_CACHE_ENABLED !== 'false';
+  private cacheEnabled = process.env.CODEX_CACHE_ENABLED === 'true'; // デフォルト無効
 
   constructor() {
     // 環境変数から設定を読み込み

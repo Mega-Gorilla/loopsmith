@@ -8,6 +8,44 @@ LoopSmithは、Claude Codeが生成したドキュメントをCodex CLIで自動
 
 **重要**: 本リポジトリは評価API（MCPツール）を提供します。自動改善ループの制御はClaude Code側のシステムプロンプトと会話フローで実行されます。
 
+## 🚀 クイックスタート
+
+### 基本的な使用例
+
+Claude Code内で`evaluate_document`ツールを使用してドキュメントを評価:
+
+```
+# 基本的な評価
+/tool evaluate_document document_path="/path/to/your/document.md" target_score=8.0
+```
+
+### プロジェクトコンテキスト付き評価
+
+プロジェクト全体のコンテキストを考慮した高精度な評価:
+
+```
+# プロジェクトファイルを参照しながら評価
+/tool evaluate_document document_path="/path/to/api-reference.md" project_path="/path/to/project" target_score=9.0
+```
+
+### 評価モードの指定
+
+厳密なJSON形式での評価結果を要求:
+
+```
+# strict モードで評価（JSON形式を厳密に要求）
+/tool evaluate_document document_path="/path/to/user-guide.md" evaluation_mode="strict"
+```
+
+### 自動改善ループの実行
+
+Claude Codeに自動改善を依頼:
+
+```
+以下のドキュメントを評価し、スコア8.0以上になるまで改善してください:
+/path/to/document.md
+```
+
 ## 特徴
 
 - 🔄 **自動改善ループ**: Claude Code側で目標スコア（デフォルト8.0/10）達成まで自動的に改善を制御
@@ -20,10 +58,20 @@ LoopSmithは、Claude Codeが生成したドキュメントをCodex CLIで自動
 
 ## 必要要件
 
-- Node.js v18以上
-- npm
+- Node.js v18以上（推奨: v20.x LTS）
+- npm v9以上
 - OpenAI Codex CLI (`npm install -g @openai/codex`)
-- Claude Code
+- Claude Code（デスクトップ版）
+
+### Claude Codeのセットアップ
+
+1. **Claude Codeのインストール**
+   - [Claude Code公式サイト](https://claude.ai/code)からダウンロード
+   - 対応OS: Windows 10+, macOS 12+, Ubuntu 20.04+
+
+2. **MCPツールの有効化**
+   - Claude Code起動後、設定でMCPを有効化
+   - `claude_desktop_config.json`が自動生成される
 
 ## インストール
 
@@ -31,6 +79,8 @@ LoopSmithは、Claude Codeが生成したドキュメントをCodex CLIで自動
 # リポジトリのクローン
 git clone https://github.com/yourusername/loopsmith.git
 cd loopsmith
+# または、既存のローカルディレクトリを使用
+# cd /path/to/loopsmith
 
 # 依存関係のインストールとビルド
 cd mcp-server
@@ -102,7 +152,7 @@ claude mcp add loopsmith `
 - ビルドは必須です：`npm run build`（server-stdio.jsがdist/codex-evaluator.jsをrequireするため）
 - 相対パスではなく絶対パスの使用を推奨します
 - ダッシュボードはClaude Code起動時に自動的にブラウザで開きます
-- ダッシュボードはDASSHBOARD_PORTで指定したポートで自動的に起動します
+- ダッシュボードはDASHBOARD_PORTで指定したポートで自動的に起動します
 
 #### 3. 接続確認
 
@@ -158,25 +208,62 @@ evaluate_document({
 - `target_score`: 目標スコア (デフォルト: 8.0)
 - `project_path`: プロジェクトディレクトリパス（Codexが読み取り専用でアクセス。未指定時はMCPプロセスのCWDを使用）
 - `evaluation_mode`: 評価モード ('flexible' | 'strict', デフォルト: 'flexible')
-- `weights` (非推奨): 評価基準の重み（0-100の配点）
-  - `completeness`: 完全性 (デフォルト: 30)
-  - `accuracy`: 正確性 (デフォルト: 30)
-  - `clarity`: 明確性 (デフォルト: 20)
-  - `usability`: 実用性 (デフォルト: 20)
 
 **評価レスポンス** (柔軟な形式):
 必須フィールド:
-- `ready_for_implementation`: 実装に移れるか（true/false）
 - `score`: 総合評価スコア（0-10）
+- `pass`: 目標スコアを達成したか（true/false）
+- `summary`: 評価の要約
+- `status`: 評価ステータス（excellent/good/needs_improvement/poor）
 
-Codexが自由に追加する可能性のあるフィールド:
-- `conclusion`: 結論の詳細説明
-- `rationale`: 評価の根拠
-- `analysis`: 詳細な分析内容
-- `recommendations`: 改善提案や推奨事項
-- `blockers`: 実装を妨げる問題
-- `technical_notes`: 技術的な注記
-- その他、評価内容に応じた情報
+オプションフィールド:
+- `details`: 詳細情報オブジェクト
+  - `strengths`: 強み・良い点の配列
+  - `issues`: 問題点・課題の配列
+  - `improvements`: 改善提案の配列
+  - `context_specific`: コンテキスト固有の情報
+
+### 評価レスポンス例
+
+**成功時のレスポンス例**:
+```json
+{
+  "score": 8.4,
+  "pass": true,
+  "summary": "ドキュメントは実装着手に十分な品質です",
+  "status": "excellent",
+  "details": {
+    "strengths": [
+      "目的と範囲が明確",
+      "セットアップ手順が具体的"
+    ],
+    "issues": [],
+    "improvements": [
+      "エラー処理の詳細を追加"
+    ]
+  }
+}
+```
+
+**失敗時のレスポンス例**:
+```json
+{
+  "score": 7.2,
+  "pass": false,
+  "summary": "重要な情報が不足しています",
+  "status": "needs_improvement",
+  "details": {
+    "issues": [
+      "認証手順が不明確",
+      "エラー処理の記載なし"
+    ],
+    "improvements": [
+      "認証フローの図を追加",
+      "トラブルシューティングセクションを拡充"
+    ]
+  }
+}
+```
 
 **評価モード**:
 - **flexible** (推奨): Codexの自然な出力形式を受け入れ、詳細な分析を保持
@@ -231,17 +318,24 @@ npm run dashboard
 
 | 変数名 | 説明 | デフォルト値 | 備考 |
 |--------|------|--------------|------|
-| `MCP_PORT` | WebSocketサーバーのポート | 23100 | レガシー実装のみ |
-| `LOG_LEVEL` | ログレベル | info | |
-| `USE_MOCK_EVALUATOR` | モック評価器を使用 | false | |
-| `TARGET_SCORE` | 目標スコア | 8.0 | |
-| `EVALUATION_PROMPT_PATH` | 評価プロンプトファイルパス | （未指定） | 未指定時は mcp-server/prompts/evaluation-prompt-filepath.txt を自動参照 |
-| `CODEX_TIMEOUT` | Codexタイムアウト時間（ミリ秒） | 300000 | 5分（最大30分まで設定可能） |
-| `CODEX_MAX_BUFFER` | Codex出力バッファサイズ | 20971520 | |
-| `CODEX_SUPPORTS_JSON_FORMAT` | --format jsonオプションのサポート | true | .env.exampleでは互換性のためfalse推奨 |
-| `ENABLE_DASHBOARD` | ダッシュボード自動起動 | true | MCPサーバー起動時にダッシュボードを起動 |
+| **基本設定** | | | |
+| `MCP_PORT` | WebSocketサーバーのポート | 23100 | stdioモードでは未使用 |
+| `LOG_LEVEL` | ログレベル | info | debug, info, warn, error |
+| `MCP_OUTPUT_FORMAT` | 出力フォーマット | markdown | markdown または json |
+| **評価設定** | | | |
+| `USE_MOCK_EVALUATOR` | モック評価器を使用 | false | テスト用 |
+| `TARGET_SCORE` | 目標スコア | 8.0 | 1.0〜10.0 |
+| `EVALUATION_MODE` | 評価モード | flexible | flexible または strict |
+| `EVALUATION_PROMPT_PATH` | 評価プロンプトファイルパス | 自動検索 | カスタムプロンプト使用時に指定 |
+| **Codex設定** | | | |
+| `CODEX_TIMEOUT` | Codexタイムアウト時間（ミリ秒） | 300000 | 5分（最大30分: 1800000） |
+| `CODEX_MAX_BUFFER` | Codex出力バッファサイズ（バイト） | 20971520 | 20MB |
+| `CODEX_CACHE_ENABLED` | キャッシュ機能の有効化 | false | 明示的に有効化する場合のみtrue |
+| `CODEX_CACHE_TTL` | キャッシュ有効期限（ミリ秒） | 3600000 | 1時間 |
+| **ダッシュボード設定** | | | |
+| `ENABLE_DASHBOARD` | ダッシュボード自動起動 | true | MCPサーバー起動時に起動 |
 | `DASHBOARD_PORT` | ダッシュボードのポート | 3000 | |
-| `AUTO_OPEN_BROWSER` | ブラウザ自動起動 | true | ダッシュボード起動時にブラウザを開く |
+| `AUTO_OPEN_BROWSER` | ブラウザ自動起動 | true | ダッシュボード起動時 |
 
 ### プロンプトのカスタマイズ
 
@@ -328,28 +422,102 @@ loopsmith/
 
 ## トラブルシューティング
 
-### Codex CLIが見つからない
+### よくある問題と解決方法
+
+#### ビルドエラー: `Cannot find module '../dist/codex-evaluator'`
 
 ```bash
+cd mcp-server
+npm run build  # 必須: distディレクトリを生成
+```
+
+#### Codex CLIが見つからない
+
+```bash
+# インストール確認
+npm list -g @openai/codex
+
+# 再インストール
 npm install -g @openai/codex
+
+# バージョン確認
 codex --version
+
+# 認証状態確認
+codex whoami
 ```
 
-### ポートが使用中（レガシーWebSocket実装のみ）
-
-**注意**: この問題は推奨のstdio実装では発生しません。WebSocketバージョンを使用する場合のみ、`.env`ファイルで`MCP_PORT`を変更:
-
-```
-MCP_PORT=23101
-```
-
-### 認証エラー
-
-Codex CLIの再認証:
+#### 認証エラー
 
 ```bash
+# 認証状態確認
+codex whoami
+
+# 再認証
 codex logout
 codex login
+```
+
+#### タイムアウトエラー
+
+大きなドキュメントや複雑な評価の場合:
+
+```bash
+# タイムアウトを10分に延長
+claude mcp add loopsmith \
+  --env CODEX_TIMEOUT=600000 \
+  -- node "$(pwd)/mcp-server/src/server-stdio.js"
+```
+
+#### バッファサイズ超過
+
+大規模な出力の場合:
+
+```bash
+# バッファサイズを50MBに拡大
+claude mcp add loopsmith \
+  --env CODEX_MAX_BUFFER=52428800 \
+  -- node "$(pwd)/mcp-server/src/server-stdio.js"
+```
+
+#### ダッシュボードが起動しない
+
+```bash
+# ダッシュボードのヘルスチェック
+curl http://localhost:3000/health
+
+# ポート競合の確認（Windows）
+netstat -an | findstr 3000
+
+# ポート競合の確認（macOS/Linux）
+lsof -i :3000
+
+# 別ポートで起動
+claude mcp add loopsmith \
+  --env DASHBOARD_PORT=3001 \
+  -- node "$(pwd)/mcp-server/src/server-stdio.js"
+```
+
+#### Windows PowerShellの実行ポリシーエラー
+
+```powershell
+# 実行ポリシーの確認
+Get-ExecutionPolicy
+
+# 実行ポリシーの変更（管理者権限で実行）
+Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+### ログファイルの確認
+
+MCPサーバーのログは以下に出力されます:
+
+```bash
+# stdioサーバーのログ
+tail -f mcp-server/mcp-server-stdio.log
+
+# ダッシュボードのログ
+tail -f mcp-server/dashboard.log
 ```
 
 ## ライセンス
@@ -363,3 +531,9 @@ MIT License
 ## サポート
 
 問題が発生した場合は、[Issues](https://github.com/yourusername/loopsmith/issues)でご報告ください。
+
+## 既知の制限事項
+
+- **Codex CLIの`--dangerously-bypass-approvals-and-sandboxes`フラグ使用**: セキュリティ上の理由から、信頼できる環境でのみ使用してください
+- **大規模ファイルの評価**: 20MBを超えるファイルはバッファサイズの調整が必要（`CODEX_MAX_BUFFER`環境変数）
+- **Windows環境での注意**: PowerShellの実行ポリシー設定が必要な場合があります（`Set-ExecutionPolicy RemoteSigned`）
