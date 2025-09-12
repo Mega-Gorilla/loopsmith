@@ -1,8 +1,8 @@
-export interface EvaluationRubric {
-  completeness: number;
-  accuracy: number;
-  clarity: number;
-  usability: number;
+export interface EvaluationDetails {
+  strengths: string[];  // 良い点のリスト
+  issues: string[];  // 問題点・誤りのリスト
+  improvements: string[];  // 改善提案のリスト
+  context_specific: any;  // 文脈に応じた追加評価
 }
 
 export interface EvaluationRequest {
@@ -14,30 +14,21 @@ export interface EvaluationRequest {
 
 export interface EvaluationResponse {
   // 必須フィールド
-  ready_for_implementation: boolean;  // 実装に移れるか
-  score: number;  // 総合評価スコア
+  score: number;  // 総合評価スコア (0-10)
+  pass: boolean;  // target_score以上かどうか
   
-  // 柔軟なフィールド（Codexの自由な出力を受け入れる）
-  conclusion?: string;  // 結論
-  rationale?: string;   // 根拠
-  analysis?: any;       // 詳細分析（構造は自由）
-  recommendations?: any; // 推奨事項（構造は自由）
-  blockers?: any;       // 実装を妨げる問題（文字列配列または構造化データ）
-  improvements?: any;   // 改善提案
-  technical_notes?: any; // 技術的な注記
-  
-  // 後方互換性のためのフィールド
-  rubric_scores?: EvaluationRubric;
-  pass?: boolean;
-  suggestions?: string[];
-  recommended_approach?: string;
+  // コアフィールド
+  summary?: string;  // 1-2文の総評
+  status?: 'excellent' | 'good' | 'needs_improvement' | 'poor';  // スコアに基づくステータス
+  details?: EvaluationDetails;  // 詳細評価
   
   // メタデータ
   metadata?: {
     iteration?: number;
     evaluation_time?: number;
     model_used?: string;
-    parsing_method?: 'json' | 'structured_text' | 'hybrid';
+    parsing_method?: 'json' | 'structured_text' | 'hybrid' | 'flexible';
+    schema_version?: 'v3';  // スキーマバージョン
   };
   
   // その他の任意フィールドを許可

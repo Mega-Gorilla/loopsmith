@@ -1,25 +1,26 @@
 import { spawn } from 'child_process';
-import { EvaluationRequest, EvaluationResponse, EvaluationRubric } from './types';
+import { EvaluationRequest, EvaluationResponse } from './types';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as dotenv from 'dotenv';
+import { createHash } from 'crypto';
+import { performance } from 'perf_hooks';
 
 // .env ファイルを読み込み
 dotenv.config();
 
 export class CodexEvaluator {
-  private readonly defaultRubric: EvaluationRubric = {
-    completeness: 0.3,
-    accuracy: 0.3,
-    clarity: 0.2,
-    usability: 0.2
-  };
   private maxRetries = 2;
   private retryDelay = 1000; // 初期遅延1秒
   private promptTemplate: string | null = null;
   private codexTimeout: number;
   private codexMaxBuffer: number;
   private targetScore: number;
+  
+  // キャッシュ機構
+  private cache = new Map<string, { result: EvaluationResponse; timestamp: number }>();
+  private cacheTTL = parseInt(process.env.CODEX_CACHE_TTL || '3600000'); // デフォルト1時間
+  private cacheEnabled = process.env.CODEX_CACHE_ENABLED !== 'false';
 
   constructor() {
     // 環境変数から設定を読み込み
@@ -35,11 +36,57 @@ export class CodexEvaluator {
     this.targetScore = parseFloat(process.env.TARGET_SCORE || '8.0');
   }
 
+  private generateCacheKey(request: EvaluationRequest): string {
+    try {
+      const fileContent = fs.readFileSync(request.document_path, 'utf8');
+      const hash = createHash('sha256');
+      hash.update(fileContent);
+      hash.update(request.target_score?.toString() || '8');
+      hash.update(this.codexTimeout.toString());
+      hash.update(this.promptTemplate || 'default');
+      return hash.digest('hex');
+    } catch (error) {
+      // ファイルが読めない場合はキャッシュを使用しない
+      return '';
+    }
+  }
+
   async evaluate(request: EvaluationRequest): Promise<EvaluationResponse> {
+    const startTotalTime = performance.now();
     const targetScore = request.target_score || this.targetScore;
     
+    // キャッシュチェック
+    let cacheKey = '';
+    if (this.cacheEnabled) {
+      cacheKey = this.generateCacheKey(request);
+      if (cacheKey && this.cache.has(cacheKey)) {
+        const cached = this.cache.get(cacheKey)!;
+        const now = Date.now();
+        if (now - cached.timestamp < this.cacheTTL) {
+          if (process.env.NODE_ENV !== 'production') {
+            console.log('キャッシュから結果を返却');
+          }
+          // キャッシュヒット時のメタデータを更新
+          const result: EvaluationResponse = {
+            ...cached.result,
+            metadata: {
+              ...cached.result.metadata,
+              evaluation_time: 0,  // キャッシュヒットなので0
+              model_used: 'cache'
+            }
+          };
+          return result;
+        } else {
+          // 期限切れキャッシュを削除
+          this.cache.delete(cacheKey);
+        }
+      }
+    }
+    
     // ファイルパスを使用して評価プロンプトを構築
-    console.log(`ファイルパスモード使用: ${request.document_path}`);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`ファイルパスモード使用: ${request.document_path}`);
+    }
     const evaluationPrompt = this.buildEvaluationPromptWithPath(request.document_path);
     
     // 再試行ロジック付き実行
@@ -54,6 +101,31 @@ export class CodexEvaluator {
       
       try {
         const result = await this.executeCodex(evaluationPrompt, targetScore, request.project_path);
+        
+        // キャッシュに保存
+        if (this.cacheEnabled && cacheKey) {
+          this.cache.set(cacheKey, {
+            result,
+            timestamp: Date.now()
+          });
+          
+          // キャッシュサイズ制限（最大100エントリ）
+          if (this.cache.size > 100) {
+            const firstKey = this.cache.keys().next().value;
+            if (firstKey) {
+              this.cache.delete(firstKey);
+            }
+          }
+        }
+        
+        // 総処理時間をメタデータに追加（評価時間として記録）
+        if (!result.metadata) {
+          result.metadata = {};
+        }
+        if (!result.metadata.evaluation_time) {
+          result.metadata.evaluation_time = performance.now() - startTotalTime;
+        }
+        
         return result;
       } catch (error) {
         lastError = error;
@@ -95,15 +167,14 @@ export class CodexEvaluator {
         '--skip-git-repo-check'  // Gitリポジトリチェックをスキップ
       ];
       
-      // --format jsonオプションが利用可能な場合は追加
-      // （Codex CLIのバージョンによってはサポートされていない可能性がある）
-      if (process.env.CODEX_SUPPORTS_JSON_FORMAT !== 'false') {
-        codexArgs.push('--format', 'json');
-      }
+      // 注: --format jsonオプションは存在しないため削除
+      // Codex CLIはデフォルトでテキスト出力を返す
       
       // 作業ディレクトリを設定（project_pathが指定されている場合はそれを使用）
       const workingDirectory = projectPath || process.cwd();
-      console.log(`Codex作業ディレクトリ: ${workingDirectory}`);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`Codex作業ディレクトリ: ${workingDirectory}`);
+      }
       
       // Codexの環境変数を設定
       // 注: CODEX_SANDBOX_MODEは実際にはCodex CLIで制御されない可能性があります
@@ -150,9 +221,13 @@ export class CodexEvaluator {
         }
       }, this.codexTimeout);
       
+      // ストリームのエンコーディングを設定（バッファ変換オーバーヘッドを削減）
+      codexProcess.stdout.setEncoding('utf8');
+      codexProcess.stderr.setEncoding('utf8');
+      
       // 標準出力を収集（バッファサイズ制限付き）
-      codexProcess.stdout.on('data', (data) => {
-        const chunk = data.toString();
+      codexProcess.stdout.on('data', (chunk) => {
+        // setEncodingによりchunkは既に文字列
         if (stdout.length + chunk.length <= this.codexMaxBuffer) {
           stdout += chunk;
         } else {
@@ -161,8 +236,8 @@ export class CodexEvaluator {
       });
       
       // エラー出力を収集
-      codexProcess.stderr.on('data', (data) => {
-        stderr += data.toString();
+      codexProcess.stderr.on('data', (chunk) => {
+        stderr += chunk;  // setEncodingにより既に文字列
       });
       
       // プロンプトを標準入力に書き込み
@@ -196,23 +271,28 @@ export class CodexEvaluator {
           // Codexの出力を解析
           const evaluation = this.parseCodexOutput(stdout);
           
-          // レスポンスの構築
+          // レスポンスの構築（新形式を優先）
           const response: EvaluationResponse = {
-            ready_for_implementation: evaluation.ready_for_implementation ?? (evaluation.score >= targetScore),
-            score: evaluation.score,
-            rubric_scores: evaluation.rubric_scores,
-            pass: evaluation.score >= targetScore,
-            suggestions: evaluation.suggestions,
-            // Codexの詳細分析を追加
-            conclusion: evaluation.conclusion,
-            rationale: evaluation.rationale,
-            analysis: evaluation.analysis,
-            recommendations: evaluation.recommendations,
-            blockers: evaluation.blockers,
+            // 必須フィールド
+            score: evaluation.score ?? 5.0,
+            pass: evaluation.pass ?? (evaluation.score >= targetScore),
+            
+            // コアフィールド
+            summary: evaluation.summary ?? '',
+            status: evaluation.status ?? this.getStatusFromScore(evaluation.score),
+            details: evaluation.details ?? {
+              strengths: [],
+              issues: [],
+              improvements: [],
+              context_specific: {}
+            },
+            
+            // メタデータ
             metadata: {
               evaluation_time: executionTime,
               model_used: 'codex-1',
-              parsing_method: evaluation.metadata?.parsing_method
+              parsing_method: evaluation.metadata?.parsing_method,
+              schema_version: 'v3'
             }
           };
           
@@ -259,9 +339,9 @@ export class CodexEvaluator {
   }
 
   private loadPromptTemplate(): string {
-    // 環境変数からプロンプトファイルパスを取得
+    // 環境変数からプロンプトファイルパスを取得（デフォルトは新しいファイルパス形式）
     const promptPath = process.env.EVALUATION_PROMPT_PATH || 
-                      path.join(__dirname, '../prompts/evaluation-prompt.txt');
+                      path.join(__dirname, '../prompts/evaluation-prompt-filepath.txt');
     
     try {
       // プロンプトテンプレートをキャッシュから使用またはファイルから読み込み
@@ -311,23 +391,15 @@ export class CodexEvaluator {
 
 <output_format>
 {
-  "ready_for_implementation": boolean,
-  "score": number (0-10),
-  "conclusion": string,
-  "rationale": string,
-  "analysis": {
+  "score": number,
+  "pass": boolean,
+  "summary": string,
+  "status": string,
+  "details": {
     "strengths": array,
-    "weaknesses": array,
-    "technical_assessment": string,
-    "recommended_approach": string|null
-  },
-  "recommendations": array|null,
-  "blockers": array|null,
-  "rubric_scores": {
-    "completeness": number,
-    "accuracy": number,
-    "clarity": number,
-    "usability": number
+    "issues": array,
+    "improvements": array,
+    "context_specific": object
   }
 }
 </output_format>
@@ -382,6 +454,13 @@ export class CodexEvaluator {
     }
   }
 
+  private getStatusFromScore(score: number): string {
+    if (score >= 8) return 'excellent';
+    if (score >= 6) return 'good';
+    if (score >= 4) return 'needs_improvement';
+    return 'poor';
+  }
+
   private removeMetadata(output: string): string {
     const lines = output.split('\n');
     const contentLines = lines.filter(line => 
@@ -411,9 +490,17 @@ export class CodexEvaluator {
     // Step 1: JSON部分を探して必須フィールドを抽出
     const jsonData = this.extractJSONFromOutput(rawOutput, cleanOutput);
     if (jsonData) {
-      // 必須フィールドを確認
-      result.ready_for_implementation = jsonData.ready_for_implementation ?? false;
+      // 新形式のフィールドを優先
       result.score = jsonData.score ?? 5.0;
+      result.pass = jsonData.pass ?? (jsonData.score >= 8);
+      result.summary = jsonData.summary ?? jsonData.conclusion ?? '';
+      result.status = jsonData.status ?? this.getStatusFromScore(jsonData.score);
+      result.details = jsonData.details ?? {
+        strengths: [],
+        issues: [],
+        improvements: [],
+        context_specific: {}
+      };
       
       // その他のJSONフィールドをマージ
       Object.assign(result, jsonData);
@@ -424,11 +511,14 @@ export class CodexEvaluator {
     const structuredData = this.parseStructuredText(cleanOutput);
     
     // JSONで取得できなかったフィールドを補完
-    if (!result.ready_for_implementation && structuredData.ready_for_implementation !== undefined) {
-      result.ready_for_implementation = structuredData.ready_for_implementation;
-    }
-    if (!result.score && structuredData.score !== undefined) {
+    if (result.score === undefined && structuredData.score !== undefined) {
       result.score = structuredData.score;
+    }
+    if (result.pass === undefined && result.score !== undefined) {
+      result.pass = result.score >= 8;  // デフォルトは8以上で合格
+    }
+    if (!result.summary && structuredData.summary !== undefined) {
+      result.summary = structuredData.summary;
     }
     
     // 構造化データをマージ（既存フィールドは上書きしない）
@@ -439,13 +529,26 @@ export class CodexEvaluator {
     }
     
     // 必須フィールドのデフォルト値
-    if (result.ready_for_implementation === undefined) {
-      result.ready_for_implementation = false;
-      console.warn('ready_for_implementationが見つからないため、falseに設定');
-    }
     if (result.score === undefined) {
       result.score = 5.0;
       console.warn('scoreが見つからないため、5.0に設定');
+    }
+    if (result.pass === undefined) {
+      result.pass = result.score >= 8;
+    }
+    if (result.status === undefined) {
+      result.status = this.getStatusFromScore(result.score);
+    }
+    if (result.summary === undefined) {
+      result.summary = '評価が完了しました。';
+    }
+    if (result.details === undefined) {
+      result.details = {
+        strengths: [],
+        issues: [],
+        improvements: [],
+        context_specific: {}
+      };
     }
     
     return result;
@@ -651,45 +754,27 @@ export class CodexEvaluator {
   }
 
   private strictJSONParse(rawOutput: string, cleanOutput: string): any {
-    // 従来のJSON厳密パース
+    // JSON厳密パース
     const jsonData = this.extractJSONFromOutput(rawOutput, cleanOutput);
     
     if (!jsonData) {
       throw new Error('有効なJSON出力が見つかりません');
     }
     
-    // 結果の正規化（新旧両方のフォーマットに対応）
+    // 結果の正規化
     const result: any = {
-      score: jsonData.score ?? jsonData.overall_score ?? 5.0,
+      score: jsonData.score ?? 5.0,
+      pass: jsonData.pass,
+      summary: jsonData.summary,
+      status: jsonData.status,
+      details: jsonData.details ?? {
+        strengths: [],
+        issues: [],
+        improvements: [],
+        context_specific: {}
+      },
       metadata: { parsing_method: 'json' }
     };
-
-    // 新形式のフィールド
-    if ('ready_for_implementation' in jsonData) {
-      result.ready_for_implementation = jsonData.ready_for_implementation;
-    }
-    if (jsonData.blockers) {
-      result.blockers = jsonData.blockers;
-    }
-    if (jsonData.recommended_approach) {
-      result.recommended_approach = jsonData.recommended_approach;
-    }
-
-    // 旧形式のフィールド（後方互換性）
-    if (jsonData.rubric_scores) {
-      result.rubric_scores = jsonData.rubric_scores;
-    } else if (jsonData.completeness || jsonData.accuracy || jsonData.clarity || jsonData.usability) {
-      result.rubric_scores = {
-        completeness: jsonData.completeness ?? 5.0,
-        accuracy: jsonData.accuracy ?? 5.0,
-        clarity: jsonData.clarity ?? 5.0,
-        usability: jsonData.usability ?? 5.0
-      };
-    }
-    
-    if (jsonData.suggestions || jsonData.recommendations || jsonData.reasons) {
-      result.suggestions = jsonData.suggestions || jsonData.recommendations || jsonData.reasons || [];
-    }
 
     return result;
   }

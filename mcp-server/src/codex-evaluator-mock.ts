@@ -1,13 +1,6 @@
-import { EvaluationRequest, EvaluationResponse, EvaluationRubric } from './types';
+import { EvaluationRequest, EvaluationResponse } from './types';
 
 export class CodexEvaluatorMock {
-  private readonly defaultRubric: EvaluationRubric = {
-    completeness: 0.3,
-    accuracy: 0.3,
-    clarity: 0.2,
-    usability: 0.2
-  };
-
   async evaluate(request: EvaluationRequest): Promise<EvaluationResponse> {
     const targetScore = request.target_score || 8.0;
     
@@ -21,42 +14,50 @@ export class CodexEvaluatorMock {
     const hasList = content.includes('-') || content.includes('*');
     
     // スコア計算
-    const completeness = Math.min(10, contentLength / 100);
-    const accuracy = hasCode ? 8 : 5;
-    const clarity = hasTitle && hasList ? 7 : 4;
-    const usability = hasCode ? 7 : 5;
+    const score = Math.min(10, contentLength / 50 + (hasTitle ? 2 : 0) + (hasCode ? 2 : 0) + (hasList ? 1 : 0));
     
-    const weightedScore = 
-      completeness * this.defaultRubric.completeness +
-      accuracy * this.defaultRubric.accuracy +
-      clarity * this.defaultRubric.clarity +
-      usability * this.defaultRubric.usability;
+    const strengths = [];
+    const issues = [];
+    const improvements = [];
     
-    const suggestions = [];
+    if (hasTitle) {
+      strengths.push('明確なセクション構造がある');
+    }
+    if (hasCode) {
+      strengths.push('コード例が含まれている');
+    }
+    
     if (contentLength < 500) {
-      suggestions.push('より詳細な説明を追加してください');
+      issues.push('内容が不十分');
+      improvements.push('より詳細な説明を追加してください');
     }
     if (!hasCode) {
-      suggestions.push('コード例を追加してください');
+      issues.push('コード例が不足');
+      improvements.push('実装例を追加してください');
     }
     if (!hasTitle) {
-      suggestions.push('セクション構造を明確にしてください');
+      issues.push('構造が不明確');
+      improvements.push('セクション構造を明確にしてください');
     }
     
     return {
-      ready_for_implementation: weightedScore >= targetScore,
-      score: Number(weightedScore.toFixed(1)),
-      rubric_scores: {
-        completeness,
-        accuracy,
-        clarity,
-        usability
+      score: Number(score.toFixed(1)),
+      pass: score >= targetScore,
+      summary: `モック評価が完了しました。スコア: ${score.toFixed(1)}/10`,
+      status: score >= 8 ? 'excellent' : score >= 6 ? 'good' : score >= 4 ? 'needs_improvement' : 'poor',
+      details: {
+        strengths,
+        issues,
+        improvements,
+        context_specific: {
+          mock_evaluation: true,
+          content_length: contentLength
+        }
       },
-      pass: weightedScore >= targetScore,
-      suggestions,
       metadata: {
         evaluation_time: 100,
-        model_used: 'mock-evaluator'
+        model_used: 'mock-evaluator',
+        schema_version: 'v3'
       }
     };
   }

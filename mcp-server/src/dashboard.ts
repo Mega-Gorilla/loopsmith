@@ -6,6 +6,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as winston from 'winston';
 import { EventEmitter } from 'events';
+import { ResultFormatter } from './result-formatter';
+import { EvaluationResponse } from './types';
 
 // ダッシュボードサーバークラス
 export class DashboardServer extends EventEmitter {
@@ -18,6 +20,7 @@ export class DashboardServer extends EventEmitter {
   private logs: any[] = [];
   private maxLogs = 1000;
   private maxHistory = 50;
+  private formatter: ResultFormatter;
   
   // ロガー設定
   private logger = winston.createLogger({
@@ -36,6 +39,7 @@ export class DashboardServer extends EventEmitter {
     this.port = port;
     this.app = express.default();
     this.server = http.createServer(this.app);
+    this.formatter = new ResultFormatter(process.env.MCP_OUTPUT_FORMAT || 'markdown');
     this.io = new SocketIOServer(this.server, {
       cors: {
         origin: (origin, callback) => {
@@ -231,12 +235,24 @@ export class DashboardServer extends EventEmitter {
         const endTime = new Date();
         const duration = endTime.getTime() - this.currentEvaluation.startTime.getTime();
         
+        // Markdown形式で評価結果をフォーマット
+        let formattedMarkdown = '';
+        try {
+          if (result && typeof result === 'object') {
+            // EvaluationResponseとして処理
+            formattedMarkdown = this.formatter.formatEvaluationResult(result as EvaluationResponse);
+          }
+        } catch (err) {
+          this.logger.warn('Markdown生成エラー:', err);
+        }
+        
         const evaluation = {
           ...this.currentEvaluation,
           endTime,
           duration,
           status: 'completed',
           result,
+          formattedMarkdown, // Markdown形式の結果を追加
           progress: 100
         };
         

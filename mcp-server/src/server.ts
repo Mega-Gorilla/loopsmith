@@ -1,6 +1,7 @@
 // 環境変数に基づいて評価器を選択
 import { CodexEvaluator as RealCodexEvaluator } from './codex-evaluator';
 import { CodexEvaluatorMock } from './codex-evaluator-mock';
+import { ResultFormatter } from './result-formatter';
 
 // USE_MOCK_EVALUATOR環境変数でモック/本番を切り替え（デフォルトは本番）
 const useMock = process.env.USE_MOCK_EVALUATOR === 'true';
@@ -38,16 +39,18 @@ const logger = winston.createLogger({
 class CodexMCPServer {
   private wss!: WebSocket.Server;
   private evaluator: InstanceType<typeof CodexEvaluator>;
+  private formatter: ResultFormatter;
   private clients: Map<WebSocket, any> = new Map();
 
   constructor() {
     this.evaluator = new CodexEvaluator();
+    this.formatter = new ResultFormatter(process.env.MCP_OUTPUT_FORMAT);
     
     this.startWebSocketServer();
   }
 
   private async handleMessage(ws: WebSocket, message: MCPMessage) {
-    logger.debug('受信メッセージ:', message);
+    logger.info('受信メッセージ:', JSON.stringify(message, null, 2));
 
     if (!message.method) {
       return;
@@ -85,45 +88,9 @@ class CodexMCPServer {
                 inputSchema: {
                   type: 'object',
                   properties: {
-                    content: {
+                    document_path: {
                       type: 'string',
-                      description: '評価対象のドキュメント内容'
-                    },
-                    rubric: {
-                      type: 'object',
-                      description: '評価基準（非推奨：weightsを使用してください）',
-                      properties: {
-                        completeness: { type: 'number' },
-                        accuracy: { type: 'number' },
-                        clarity: { type: 'number' },
-                        usability: { type: 'number' }
-                      }
-                    },
-                    weights: {
-                      type: 'object',
-                      description: '評価基準の重み（推奨）',
-                      properties: {
-                        completeness: { 
-                          type: 'number',
-                          description: '完全性の重み（0-100）',
-                          default: 30
-                        },
-                        accuracy: { 
-                          type: 'number',
-                          description: '正確性の重み（0-100）',
-                          default: 30
-                        },
-                        clarity: { 
-                          type: 'number',
-                          description: '明確性の重み（0-100）',
-                          default: 20
-                        },
-                        usability: { 
-                          type: 'number',
-                          description: '実用性の重み（0-100）',
-                          default: 20
-                        }
-                      }
+                      description: '評価対象ドキュメントのファイルパス'
                     },
                     target_score: {
                       type: 'number',
@@ -135,7 +102,7 @@ class CodexMCPServer {
                       description: 'プロジェクトディレクトリパス（読み取り専用アクセス）'
                     }
                   },
-                  required: ['content']
+                  required: ['document_path']
                 }
               },
               {
@@ -186,6 +153,14 @@ class CodexMCPServer {
           
           logger.info(`評価完了: スコア=${result.score}, 合格=${result.pass}`);
           
+          // target_scoreを結果に追加（Markdown出力で使用）
+          if (evalRequest.target_score) {
+            result.target_score = evalRequest.target_score;
+          }
+          
+          // ResultFormatterでフォーマット
+          const formattedResult = this.formatter.formatEvaluationResult(result);
+          
           this.sendMessage(ws, {
             jsonrpc: '2.0',
             id: message.id,
@@ -193,7 +168,7 @@ class CodexMCPServer {
               content: [
                 {
                   type: 'text',
-                  text: JSON.stringify(result, null, 2)
+                  text: formattedResult
                 }
               ]
             }
@@ -227,7 +202,20 @@ class CodexMCPServer {
       }
     } catch (error: any) {
       logger.error(`ツール実行エラー: ${error.message}`);
-      this.sendError(ws, message.id, error.code || -32603, error.message || 'ツール実行に失敗しました', error.data);
+      
+      // エラーもフォーマット
+      const formattedError = this.formatter.formatError(error);
+      
+      // JSON-RPC準拠のエラーレスポンス
+      this.sendError(
+        ws, 
+        message.id, 
+        error.code || -32603, 
+        error.message || 'ツール実行に失敗しました',
+        { 
+          formatted: formattedError 
+        }
+      );
     }
   }
 
@@ -265,6 +253,7 @@ class CodexMCPServer {
 
       ws.on('message', async (data: WebSocket.Data) => {
         try {
+          logger.info('生データ受信:', data.toString());
           const message = JSON.parse(data.toString()) as MCPMessage;
           await this.handleMessage(ws, message);
         } catch (error: any) {

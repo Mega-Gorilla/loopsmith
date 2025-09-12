@@ -1,5 +1,5 @@
 <task>
-技術ドキュメントの評価を行います。
+技術ドキュメントの評価を行います。以下の内容を元に熟考しつつ評価を実施してください。
 
 <context>
 評価対象ファイル: {{document_path}}
@@ -16,7 +16,7 @@
 以下のアプローチで評価を進めてください：
 
 1. 対象ファイルを読み込み、ドキュメントの種類と目的を理解する
-2. 必要に応じて関連ファイルやプロジェクト構造を確認する
+2. 必要に応じて関連ファイル・コード等をレビュー・確認する
 3. 不明な点や最新情報が必要な場合は、外部リソースを活用する
    （Web検索、公式ドキュメント、GitHub、Stack Overflow等）
 4. ドキュメントの性質に応じた評価基準を設定し、段階的に分析する
@@ -25,12 +25,23 @@
 <evaluation_criteria>
 実装準備の完成度を評価する際、最低限以下の観点を含めてください：
 
-【必須評価項目】
-- 実装可能性：現実的に実装できるか
-- 技術的妥当性：アプローチや技術選定が適切か
-- 情報の充足性：実装に必要な詳細が記載されているか
+### 1. 良い点（Strengths）
+- 技術的に正しく、適切に記述されている部分
+- 実装に有用な情報が含まれている部分
+- 明確で理解しやすい記述
 
-【文脈に応じた追加評価】
+### 2. 問題点・誤り（Issues）
+- 技術的な誤りや不正確な記述
+- 実装に必要だが欠けている情報
+- 曖昧または矛盾する記述
+- 潜在的なリスクや技術的負債
+
+### 3. 改善提案（Improvements）
+- 具体的な修正案と追加すべき情報
+- より良いアプローチや代替案
+- 実装を成功させるための推奨事項
+
+### 4.文脈に応じた追加内容
 ドキュメントの内容と目的から判断して、重要な評価観点を自律的に追加してください。
 
 例えば：
@@ -47,26 +58,25 @@
 評価結果を以下のJSON形式で出力してください：
 
 {
-  "ready_for_implementation": boolean,
-  "score": number (0-10),
-  "conclusion": string,
-  "rationale": string,
-  "analysis": {
-    "strengths": array,
-    "weaknesses": array,
-    "technical_assessment": string,
-    "recommended_approach": string|null
-  },
-  "recommendations": array|null,
-  "blockers": array|null,
-  "rubric_scores": {
-    "completeness": number (0-10),
-    "accuracy": number (0-10),
-    "clarity": number (0-10),
-    "usability": number (0-10)
+  "score": number,          // 0-10の総合評価スコア
+  "pass": boolean,          // target_score以上かどうか
+  "summary": string,        // 1-2文の総評
+  "status": string,         // excellent/good/needs_improvement/poor
+  "details": {
+    "strengths": array,     // 良い点のリスト（文字列の配列）
+    "issues": array,        // 問題点・誤りのリスト（文字列の配列）
+    "improvements": array,  // 改善提案のリスト（文字列の配列）
+    "context_specific": object  // 文脈に応じた追加評価（自由形式のオブジェクト）
   }
 }
 
-注：すべてのフィールドを含め、該当なしはnullで表現してください。
+重要な指示：
+- JSONのみを出力（説明文やコードフェンスは禁止）
+- すべてのフィールドは必須（該当なしは空配列/空オブジェクト）
+- scoreは数値リテラル（"8/10"などの文字列表記は禁止）
+- passはscoreがtarget_score（デフォルト8）以上の場合にtrue
+- statusはscoreに基づく：8-10=excellent, 6-7.9=good, 4-5.9=needs_improvement, 0-3.9=poor
+- details内の各配列は簡潔な文字列のリストとする
+- context_specificには評価対象の性質に応じた追加情報を自由に構造化して格納
 </output_format>
 </task>

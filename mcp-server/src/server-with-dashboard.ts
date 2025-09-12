@@ -1,6 +1,7 @@
 // 統合サーバー: MCPサーバー + ダッシュボード
 import { CodexEvaluator as RealCodexEvaluator } from './codex-evaluator';
 import { CodexEvaluatorMock } from './codex-evaluator-mock';
+import { ResultFormatter } from './result-formatter';
 import { EvaluationRequest, MCPMessage } from './types';
 import * as winston from 'winston';
 import * as dotenv from 'dotenv';
@@ -38,12 +39,14 @@ const logger = winston.createLogger({
 class IntegratedServer {
   private wss!: WebSocket.Server;
   private evaluator: InstanceType<typeof CodexEvaluator>;
+  private formatter: ResultFormatter;
   private clients: Map<WebSocket, any> = new Map();
   private dashboard: DashboardServer;
   private currentEvaluation: any = null;
 
   constructor() {
     this.evaluator = new CodexEvaluator();
+    this.formatter = new ResultFormatter(process.env.MCP_OUTPUT_FORMAT);
     
     // ダッシュボードサーバー初期化
     const dashboardPort = parseInt(process.env.DASHBOARD_PORT || '3000');
@@ -98,27 +101,21 @@ class IntegratedServer {
                 inputSchema: {
                   type: 'object',
                   properties: {
-                    content: {
+                    document_path: {
                       type: 'string',
-                      description: '評価対象のドキュメント内容'
-                    },
-                    rubric: {
-                      type: 'object',
-                      description: '評価基準',
-                      properties: {
-                        completeness: { type: 'number' },
-                        accuracy: { type: 'number' },
-                        clarity: { type: 'number' },
-                        usability: { type: 'number' }
-                      }
+                      description: '評価対象ドキュメントのファイルパス'
                     },
                     target_score: {
                       type: 'number',
                       default: 8.0,
                       description: '目標スコア'
+                    },
+                    project_path: {
+                      type: 'string',
+                      description: 'プロジェクトディレクトリパス（読み取り専用アクセス）'
                     }
                   },
-                  required: ['content']
+                  required: ['document_path']
                 }
               },
               {
@@ -243,7 +240,21 @@ class IntegratedServer {
     } catch (error: any) {
       logger.error(`ツール実行エラー: ${error.message}`);
       this.dashboard.logMessage('error', `ツール実行エラー: ${error.message}`);
-      this.sendError(ws, message.id, error.code || -32603, error.message || 'ツール実行に失敗しました', error.data);
+      
+      // エラーもフォーマット
+      const formattedError = this.formatter.formatError(error);
+      
+      // JSON-RPC準拠のエラーレスポンス
+      this.sendError(
+        ws, 
+        message.id, 
+        error.code || -32603, 
+        error.message || 'ツール実行に失敗しました',
+        { 
+          formatted: formattedError,
+          ...error.data 
+        }
+      );
     }
   }
 
