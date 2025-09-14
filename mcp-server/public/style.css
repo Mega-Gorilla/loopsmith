@@ -54,6 +54,32 @@ body {
     gap: 2rem;
 }
 
+.language-selector {
+    display: flex;
+    align-items: center;
+}
+
+.language-selector select {
+    padding: 0.3rem 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: white;
+    color: #333;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: border-color 0.3s;
+}
+
+.language-selector select:hover {
+    border-color: #667eea;
+}
+
+.language-selector select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+}
+
 .status-indicator {
     display: flex;
     align-items: center;

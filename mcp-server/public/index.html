@@ -1,10 +1,17 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LoopSmith Monitor - リアルタイム評価監視ダッシュボード</title>
+    <title>LoopSmith Monitor - Real-time Evaluation Dashboard</title>
     <link rel="stylesheet" href="style.css">
+
+    <!-- Language files - Order is important! -->
+    <script src="lang/en.js"></script>
+    <script src="lang/ja.js"></script>
+    <script src="lang/language-manager.js"></script>
+
+    <!-- External libraries -->
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
@@ -14,12 +21,18 @@
         <header class="header">
             <div class="header-left">
                 <h1>🔄 LoopSmith Monitor</h1>
-                <span class="subtitle">Codex評価監視ダッシュボード</span>
+                <span class="subtitle" data-i18n="subtitle">Codex Evaluation Monitor Dashboard</span>
             </div>
             <div class="header-right">
+                <div class="language-selector">
+                    <select id="languageSelect" onchange="changeLanguage(this.value)">
+                        <option value="en">English</option>
+                        <option value="ja">日本語</option>
+                    </select>
+                </div>
                 <div class="status-indicator">
                     <span class="status-dot" id="connectionStatus"></span>
-                    <span id="connectionText">未接続</span>
+                    <span id="connectionText" data-i18n="connection.disconnected">Disconnected</span>
                 </div>
                 <div class="server-info">
                     <span id="serverTime"></span>
@@ -32,14 +45,16 @@
             <!-- 左側パネル: 現在の評価 -->
             <section class="panel current-evaluation">
                 <div class="panel-header">
-                    <h2>📊 現在の評価</h2>
-                    <button class="btn btn-small" onclick="refreshDashboard()" title="手動更新">
-                        🔄 更新
+                    <h2 data-i18n="headers.currentEvaluation">📊 Current Evaluation</h2>
+                    <button class="btn btn-small" onclick="refreshDashboard()"
+                            data-i18n="buttons.refresh"
+                            data-i18n-attr="title:buttons.refreshTooltip">
+                        🔄 Refresh
                     </button>
                 </div>
                 <div id="currentEvaluation" class="evaluation-content">
                     <div class="no-evaluation">
-                        <p>評価待機中...</p>
+                        <p data-i18n="labels.waiting">Waiting for evaluation...</p>
                     </div>
                 </div>
             </section>
@@ -47,15 +62,15 @@
             <!-- 中央パネル: ログビューア -->
             <section class="panel logs">
                 <div class="panel-header">
-                    <h2>📝 リアルタイムログ</h2>
+                    <h2 data-i18n="headers.realtimeLogs">📝 Real-time Logs</h2>
                     <div class="log-controls">
-                        <button onclick="clearLogs()" class="btn btn-small">クリア</button>
+                        <button onclick="clearLogs()" class="btn btn-small" data-i18n="buttons.clear">Clear</button>
                         <label>
                             <input type="checkbox" id="autoScroll" checked>
-                            自動スクロール
+                            <span data-i18n="labels.autoScroll">Auto-scroll</span>
                         </label>
                         <select id="logFilter" onchange="filterLogs()">
-                            <option value="">すべて</option>
+                            <option value="" data-i18n="labels.filterAll">All</option>
                             <option value="info">Info</option>
                             <option value="warning">Warning</option>
                             <option value="error">Error</option>
@@ -72,23 +87,23 @@
             <section class="panel stats-history">
                 <!-- 統計情報 -->
                 <div class="stats-section">
-                    <h2>📈 統計情報</h2>
+                    <h2 data-i18n="headers.statistics">📈 Statistics</h2>
                     <div id="statsContainer" class="stats-grid">
                         <div class="stat-card">
                             <div class="stat-value" id="totalEvaluations">0</div>
-                            <div class="stat-label">総評価数</div>
+                            <div class="stat-label" data-i18n="labels.totalEvaluations">Total Evaluations</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-value" id="successRate">0%</div>
-                            <div class="stat-label">成功率</div>
+                            <div class="stat-label" data-i18n="labels.successRate">Success Rate</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-value" id="avgScore">0.0</div>
-                            <div class="stat-label">平均スコア</div>
+                            <div class="stat-label" data-i18n="labels.averageScore">Average Score</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-value" id="avgDuration">0s</div>
-                            <div class="stat-label">平均処理時間</div>
+                            <div class="stat-label" data-i18n="labels.averageDuration">Average Duration</div>
                         </div>
                     </div>
                 </div>
@@ -96,18 +111,18 @@
                 <!-- 評価履歴 -->
                 <div class="history-section">
                     <div class="section-header">
-                        <h2>📋 評価履歴</h2>
-                        <button onclick="clearHistory()" class="btn btn-small btn-danger">履歴クリア</button>
+                        <h2 data-i18n="headers.evaluationHistory">📋 Evaluation History</h2>
+                        <button onclick="clearHistory()" class="btn btn-small btn-danger" data-i18n="buttons.clearHistory">Clear History</button>
                     </div>
                     <div id="historyContainer" class="history-container">
                         <table class="history-table">
                             <thead>
                                 <tr>
                                     <th>#</th>
-                                    <th>時刻</th>
-                                    <th>スコア</th>
-                                    <th>状態</th>
-                                    <th>時間</th>
+                                    <th data-i18n="labels.time">Time</th>
+                                    <th data-i18n="labels.score">Score</th>
+                                    <th data-i18n="labels.status">Status</th>
+                                    <th data-i18n="labels.duration">Duration</th>
                                 </tr>
                             </thead>
                             <tbody id="historyTableBody">
@@ -123,7 +138,7 @@
         <div id="evaluationModal" class="modal">
             <div class="modal-content">
                 <span class="close" onclick="closeModal()">&times;</span>
-                <h2>評価詳細</h2>
+                <h2 data-i18n="headers.evaluationDetails">Evaluation Details</h2>
                 <div id="modalContent">
                     <!-- 詳細情報がここに表示される -->
                 </div>
