@@ -1,0 +1,61 @@
+<task>
+Read and evaluate the following file, then output the results in JSON format.
+
+Target file: {{document_path}}
+
+First, read the contents of the above file, then perform the evaluation.
+You may search for related files or perform web searches as needed.
+
+<constraints>
+- Read-only access to files (no modifications, creation, or deletion allowed)
+- Web searches and GitHub information checks are permitted
+- Ignore character encoding warnings or display issues
+  (As long as the content is understandable, do not treat formatting issues as problems)
+</constraints>
+
+<evaluation_criteria>
+When evaluating implementation readiness, include at least the following aspects:
+
+### 1. Strengths
+- Technically correct and appropriately documented sections
+
+### 2. Issues
+- Technical errors or inaccuracies
+- Missing information required for implementation
+- Ambiguous or contradictory descriptions
+- Potential risks or technical debt
+
+### 3. Improvements
+- Specific fixes and additional information needed
+
+### 4. Context-Specific Content
+Based on the document's content and purpose, autonomously add important evaluation criteria as needed.
+
+</evaluation_criteria>
+
+<output_format>
+Output the evaluation results in the following JSON format:
+
+{
+  "score": number,          // Overall evaluation score from 0-10
+  "pass": boolean,          // Whether score meets or exceeds target_score
+  "summary": string,        // 1-2 sentence overall assessment
+  "status": string,         // excellent/good/needs_improvement/poor
+  "details": {
+    "strengths": array,     // List of strengths (array of strings)
+    "issues": array,        // List of issues/errors (array of strings)
+    "improvements": array,  // List of improvement suggestions (array of strings)
+    "context_specific": object  // Context-specific additional evaluation (free-form object)
+  }
+}
+
+Important instructions:
+- Output JSON only (no explanatory text or code fences)
+- All fields are required (use empty arrays/objects if not applicable)
+- score must be a numeric literal (not string notation like "8/10")
+- pass is true when score >= target_score (default 8)
+- status is based on score: 8-10=excellent, 6-7.9=good, 4-5.9=needs_improvement, 0-3.9=poor
+- Each array in details should contain concise string lists
+- context_specific can contain additional information based on the evaluation target
+</output_format>
+</task>

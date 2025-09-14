@@ -1,5 +1,5 @@
 import { spawn } from 'child_process';
-import { EvaluationRequest, EvaluationResponse } from './types';
+import { EvaluationRequest, EvaluationResponse, SimplifiedEvaluationResponse, AnyEvaluationResponse } from './types';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as dotenv from 'dotenv';
@@ -64,7 +64,7 @@ export class CodexEvaluator {
         const now = Date.now();
         if (now - cached.timestamp < this.cacheTTL) {
           if (process.env.NODE_ENV !== 'production') {
-            console.log('キャッシュから結果を返却');
+            console.log('Returning cached result');
           }
           // キャッシュヒット時のメタデータを更新
           const result: EvaluationResponse = {
@@ -85,7 +85,7 @@ export class CodexEvaluator {
     
     // ファイルパスを使用して評価プロンプトを構築
     if (process.env.NODE_ENV !== 'production') {
-      console.log(`ファイルパスモード使用: ${request.document_path}`);
+      console.log(`Using file path mode: ${request.document_path}`);
     }
     const evaluationPrompt = this.buildEvaluationPromptWithPath(request.document_path);
     
@@ -96,7 +96,7 @@ export class CodexEvaluator {
         // 指数バックオフ
         const delay = this.retryDelay * Math.pow(2, attempt - 1);
         await new Promise(resolve => setTimeout(resolve, delay));
-        console.log(`再試行 ${attempt}/${this.maxRetries}...`);
+        console.log(`Retrying ${attempt}/${this.maxRetries}...`);
       }
       
       try {
@@ -129,7 +129,10 @@ export class CodexEvaluator {
         return result;
       } catch (error) {
         lastError = error;
-        console.error(`Codex実行失敗 (試行 ${attempt + 1}):`, error);
+        console.error(`Codex execution failed (attempt ${attempt + 1}):`, error);
+        if (error && typeof error === 'object' && 'data' in error) {
+          console.error('Error details:', JSON.stringify(error.data, null, 2));
+        }
         
         // 再試行不可能なエラーの場合は即座に失敗
         if (error && typeof error === 'object' && 'retryable' in error && error.retryable === false) {
@@ -139,14 +142,21 @@ export class CodexEvaluator {
     }
     
     // すべての再試行が失敗
+    const errorData: any = {
+      details: lastError instanceof Error ? lastError.message : 'Unknown error',
+      retryable: false,
+      attempts: this.maxRetries + 1
+    };
+    
+    // lastErrorが詳細情報を持っている場合は追加
+    if (lastError && typeof lastError === 'object' && 'data' in lastError) {
+      errorData.lastErrorData = lastError.data;
+    }
+    
     throw {
       code: -32603,
-      message: 'Codex評価に失敗しました（再試行後）',
-      data: {
-        details: lastError instanceof Error ? lastError.message : '不明なエラー',
-        retryable: false,
-        attempts: this.maxRetries + 1
-      }
+      message: 'Codex evaluation failed (after retries)',
+      data: errorData
     };
   }
 
@@ -154,7 +164,7 @@ export class CodexEvaluator {
     return new Promise((resolve, reject) => {
       const startTime = Date.now();
       
-      console.log(`Codex評価開始 - タイムアウト設定: ${this.codexTimeout}ms (${this.codexTimeout / 1000}秒)`);
+      console.log(`Starting Codex evaluation - timeout: ${this.codexTimeout}ms (${this.codexTimeout / 1000}s)`);
       
       // spawnを使用してより堅牢な実行（Windows対応）
       const isWindows = process.platform === 'win32';
@@ -173,7 +183,7 @@ export class CodexEvaluator {
       // 作業ディレクトリを設定（project_pathが指定されている場合はそれを使用）
       const workingDirectory = projectPath || process.cwd();
       if (process.env.NODE_ENV !== 'production') {
-        console.log(`Codex作業ディレクトリ: ${workingDirectory}`);
+        console.log(`Codex working directory: ${workingDirectory}`);
       }
       
       // Codexの環境変数を設定
@@ -188,7 +198,9 @@ export class CodexEvaluator {
         shell: isWindows, // Windowsではshellをtrueに
         windowsHide: true,
         env: codexEnv,
-        cwd: workingDirectory  // 指定されたプロジェクトパスで実行
+        cwd: workingDirectory,  // 指定されたプロジェクトパスで実行
+        // WindowsでのUTF-8サポート
+        windowsVerbatimArguments: true
       });
       
       let stdout = '';
@@ -199,21 +211,27 @@ export class CodexEvaluator {
       const timeoutId = setTimeout(() => {
         if (!processKilled) {
           processKilled = true;
-          console.error(`Codexプロセスがタイムアウトしました (${this.codexTimeout}ms)`);
-          codexProcess.kill('SIGTERM');
+          console.error(`Codex process timed out (${this.codexTimeout}ms)`);
           
-          // Windowsの場合、SIGTERMが効かない場合があるので強制終了
-          setTimeout(() => {
-            if (!codexProcess.killed) {
-              codexProcess.kill('SIGKILL');
-            }
-          }, 5000);
+          // Windowsでのプロセス終了
+          if (isWindows && codexProcess.pid) {
+            // Windowsではtaskkillを使用
+            spawn('taskkill', ['/F', '/T', '/PID', codexProcess.pid.toString()], { shell: true });
+          } else if (codexProcess.pid) {
+            codexProcess.kill('SIGTERM');
+            // Unix系でも強制終了を保証
+            setTimeout(() => {
+              if (!codexProcess.killed) {
+                codexProcess.kill('SIGKILL');
+              }
+            }, 5000);
+          }
           
           reject({
             code: -32603,
-            message: `Codex評価がタイムアウトしました (${this.codexTimeout / 1000}秒)`,
+            message: `Codex evaluation timed out (${this.codexTimeout / 1000}s)`,
             data: {
-              details: `処理時間が設定値 ${this.codexTimeout}ms を超過しました`,
+              details: `Processing time exceeded limit of ${this.codexTimeout}ms`,
               timeout: this.codexTimeout,
               retryable: true
             }
@@ -225,23 +243,33 @@ export class CodexEvaluator {
       codexProcess.stdout.setEncoding('utf8');
       codexProcess.stderr.setEncoding('utf8');
       
+      // WindowsでのプロセスIDをログ
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`Codex process started: PID=${codexProcess.pid}`);
+      }
+      
       // 標準出力を収集（バッファサイズ制限付き）
       codexProcess.stdout.on('data', (chunk) => {
         // setEncodingによりchunkは既に文字列
         if (stdout.length + chunk.length <= this.codexMaxBuffer) {
           stdout += chunk;
         } else {
-          console.warn('出力バッファが上限に達しました');
+          console.warn('Output buffer reached maximum size');
         }
       });
       
       // エラー出力を収集
       codexProcess.stderr.on('data', (chunk) => {
         stderr += chunk;  // setEncodingにより既に文字列
+        // リアルタイムでstderrを出力（デバッグ用）
+        if (process.env.NODE_ENV !== 'production') {
+          console.error('Codex stderr:', chunk);
+        }
       });
       
-      // プロンプトを標準入力に書き込み
-      codexProcess.stdin.write(evaluationPrompt);
+      // プロンプトを標準入力に書き込み（UTF-8でエンコード）
+      codexProcess.stdin.setDefaultEncoding('utf8');
+      codexProcess.stdin.write(evaluationPrompt, 'utf8');
       codexProcess.stdin.end();
       
       // プロセス終了時の処理
@@ -252,15 +280,25 @@ export class CodexEvaluator {
           return;  // タイムアウトで既に処理済み
         }
         
+        // デバッグ情報を出力
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`Codex process exited: code=${code}`);
+          if (stdout) console.log('Codex stdout length:', stdout.length);
+          if (stderr) console.log('Codex stderr length:', stderr.length);
+        }
+        
         const executionTime = Date.now() - startTime;
         
         if (code !== 0) {
+          const error = stderr || stdout || 'No error details';
           reject({
             code: -32603,
-            message: `Codex CLIがエラーコード ${code} で終了しました`,
+            message: `Codex CLI exited with error code ${code}`,
             data: {
-              details: stderr || 'エラー詳細なし',
+              details: error,
               exitCode: code,
+              stderr: stderr.substring(0, 1000), // 最初の1000文字のみ
+              stdout: stdout.substring(0, 500),  // 最初の500文字のみ
               retryable: true
             }
           });
@@ -271,38 +309,70 @@ export class CodexEvaluator {
           // Codexの出力を解析
           const evaluation = this.parseCodexOutput(stdout);
           
-          // レスポンスの構築（新形式を優先）
-          const response: EvaluationResponse = {
-            // 必須フィールド
-            score: evaluation.score ?? 5.0,
-            pass: evaluation.pass ?? (evaluation.score >= targetScore),
-            
-            // コアフィールド
-            summary: evaluation.summary ?? '',
-            status: evaluation.status ?? this.getStatusFromScore(evaluation.score),
-            details: evaluation.details ?? {
-              strengths: [],
-              issues: [],
-              improvements: [],
-              context_specific: {}
-            },
-            
-            // メタデータ
-            metadata: {
-              evaluation_time: executionTime,
-              model_used: 'codex-1',
-              parsing_method: evaluation.metadata?.parsing_method,
-              schema_version: 'v3'
-            }
-          };
+          // Check if it's simplified format
+          const evaluationFormat = process.env.EVALUATION_FORMAT || 'traditional';
           
-          resolve(response);
+          if (evaluationFormat === 'simplified' && 'confidence' in evaluation) {
+            // For simplified format, convert to traditional response for compatibility
+            const simplified = evaluation as SimplifiedEvaluationResponse;
+            const response: EvaluationResponse = {
+              // Convert simplified to traditional
+              score: simplified.pass ? 9.0 : 5.0,  // Temporary score mapping
+              pass: simplified.pass,
+              summary: simplified.context.split('\n')[0].replace(/^## Summary\s*/, ''),
+              status: simplified.pass ? 'excellent' : 'needs_improvement',
+              details: {
+                strengths: [],
+                issues: [],
+                improvements: [],
+                context_specific: {
+                  confidence: simplified.confidence,
+                  full_context: simplified.context
+                }
+              },
+              metadata: {
+                evaluation_time: executionTime,
+                model_used: 'codex-1',
+                format_version: 'simplified',
+                parsing_method: simplified.metadata?.parsing_method || 'json',
+                schema_version: 'v3'
+              }
+            };
+            resolve(response);
+          } else {
+            // Traditional format response
+            const response: EvaluationResponse = {
+              // 必須フィールド
+              score: evaluation.score ?? 5.0,
+              pass: evaluation.pass ?? (evaluation.score >= targetScore),
+              
+              // コアフィールド
+              summary: evaluation.summary ?? '',
+              status: evaluation.status ?? this.getStatusFromScore(evaluation.score),
+              details: evaluation.details ?? {
+                strengths: [],
+                issues: [],
+                improvements: [],
+                context_specific: {}
+              },
+              
+              // メタデータ
+              metadata: {
+                evaluation_time: executionTime,
+                model_used: 'codex-1',
+                parsing_method: evaluation.metadata?.parsing_method,
+                schema_version: 'v3'
+              }
+            };
+            
+            resolve(response);
+          }
         } catch (parseError) {
           reject({
             code: -32603,
-            message: 'Codex出力の解析に失敗しました',
+            message: 'Failed to parse Codex output',
             data: {
-              details: parseError instanceof Error ? parseError.message : '解析エラー',
+              details: parseError instanceof Error ? parseError.message : 'Parsing error',
               rawOutput: stdout.substring(0, 500), // デバッグ用に最初の500文字
               retryable: true
             }
@@ -318,16 +388,16 @@ export class CodexEvaluator {
         if (error.message.includes('ENOENT')) {
           reject({
             code: -32603,
-            message: 'Codex CLIが見つかりません',
+            message: 'Codex CLI not found',
             data: {
-              details: 'npm install -g @openai/codex を実行してインストールしてください',
+              details: 'Please install by running: npm install -g @openai/codex',
               retryable: false
             }
           });
         } else {
           reject({
             code: -32603,
-            message: 'Codex CLI実行エラー',
+            message: 'Codex CLI execution error',
             data: {
               details: error.message,
               retryable: true
@@ -339,54 +409,58 @@ export class CodexEvaluator {
   }
 
   private loadPromptTemplate(): string {
-    // 環境変数からプロンプトファイルパスを取得（デフォルトは新しいファイルパス形式）
+    // Get prompt file path from environment (default to English)
+    const language = process.env.EVALUATION_LANGUAGE || 'en';
+    const defaultPromptFile = language === 'en' 
+      ? 'evaluation-prompt-filepath-en.txt'
+      : 'evaluation-prompt-filepath.txt';
     const promptPath = process.env.EVALUATION_PROMPT_PATH || 
-                      path.join(__dirname, '../prompts/evaluation-prompt-filepath.txt');
+                      path.join(__dirname, '../prompts', defaultPromptFile);
     
     try {
       // プロンプトテンプレートをキャッシュから使用またはファイルから読み込み
       if (!this.promptTemplate) {
         if (fs.existsSync(promptPath)) {
           this.promptTemplate = fs.readFileSync(promptPath, 'utf-8');
-          console.log(`プロンプトテンプレートを読み込みました: ${promptPath}`);
+          console.log(`Loaded prompt template: ${promptPath}`);
         } else {
-          console.warn(`プロンプトファイルが見つかりません: ${promptPath}。デフォルトプロンプトを使用します。`);
+          console.warn(`Prompt file not found: ${promptPath}. Using default prompt.`);
         }
       }
       return this.promptTemplate || this.getDefaultPromptTemplate();
     } catch (error) {
-      console.error('プロンプトテンプレート読み込みエラー:', error);
+      console.error('Error loading prompt template:', error);
       return this.getDefaultPromptTemplate();
     }
   }
 
   private getDefaultPromptTemplate(): string {
     return `<task>
-技術ドキュメントの評価を行います。
+Evaluate the technical document.
 
 <context>
-以下の内容が実装準備として十分な品質かを判定します。
+Determine if the content has sufficient quality for implementation readiness.
 </context>
 
 <constraints>
-- 読み取りのみ可能（修正・作成・削除は禁止）
-- 文字エンコーディングの警告や表示上の文字化けは無視してください
+- Read-only access (no modifications, creation, or deletion allowed)
+- Ignore character encoding warnings or display issues
 </constraints>
 
 <process>
-1. ドキュメントの種類と目的を理解する
-2. 必要に応じて外部情報を収集する（Web検索、公式ドキュメント等）
-3. 内容に応じた適切な評価基準を設定し、分析する
+1. Understand the document type and purpose
+2. Collect external information as needed (web search, official documentation, etc.)
+3. Set appropriate evaluation criteria based on content and analyze
 </process>
 
 <evaluation_criteria>
-最低限、以下の観点を評価してください：
-- 実装可能性：現実的に実装できるか
-- 技術的妥当性：アプローチが適切か
-- 情報の充足性：必要な詳細が記載されているか
+Evaluate at least the following aspects:
+- Implementation feasibility: Can it be realistically implemented?
+- Technical validity: Is the approach appropriate?
+- Information completeness: Are necessary details provided?
 
-ドキュメントの性質に応じて、重要な評価観点を自律的に追加してください。
-（例：API設計、セキュリティ、パフォーマンス、複数案の比較など）
+Autonomously add important evaluation criteria based on the document's nature.
+(Examples: API design, security, performance, comparison of multiple approaches, etc.)
 </evaluation_criteria>
 
 <output_format>
@@ -404,27 +478,44 @@ export class CodexEvaluator {
 }
 </output_format>
 
-評価対象:
+Evaluation target:
 {{document_content}}
 </task>`;
   }
 
   private buildEvaluationPromptWithPath(filePath: string): string {
-    // ファイルパス用のプロンプトテンプレートを読み込み
-    const templatePath = path.join(__dirname, '..', 'prompts', 'evaluation-prompt-filepath.txt');
+    // Load prompt template for file path evaluation
+    // Default to simplified format for better performance
+    const format = process.env.EVALUATION_FORMAT || 'simplified';
+    const language = process.env.EVALUATION_LANGUAGE || 'en';
+    
+    let templateFile: string;
+    if (format === 'simplified') {
+      // Use simplified format
+      templateFile = language === 'en' 
+        ? 'evaluation-prompt-simplified-en.txt'
+        : 'evaluation-prompt-simplified-ja.txt';  // Japanese version if needed
+    } else {
+      // Use traditional format
+      templateFile = language === 'en' 
+        ? 'evaluation-prompt-filepath-en.txt'
+        : 'evaluation-prompt-filepath.txt';
+    }
+    
+    const templatePath = path.join(__dirname, '..', 'prompts', templateFile);
     let template: string;
     
     if (fs.existsSync(templatePath)) {
       template = fs.readFileSync(templatePath, 'utf-8');
-      console.log(`ファイルパス用プロンプトテンプレートを読み込みました: ${templatePath}`);
+      console.log(`Loaded file path prompt template: ${templatePath}`);
     } else {
-      // フォールバック：デフォルトテンプレートを修正
+      // Fallback: modify default template
       template = this.loadPromptTemplate();
-      template = template.replace('評価対象:', `評価対象ファイル: ${filePath}\n\nこのファイルを読み込んで評価してください。`);
-      console.log('ファイルパス用テンプレートが見つからないため、デフォルトを修正');
+      template = template.replace('Target file:', `Target file: ${filePath}\n\nPlease read and evaluate this file.`);
+      console.log('File path template not found, using modified default');
     }
     
-    // テンプレート変数を置換
+    // Replace template variables
     template = template.replace(/\{\{document_path\}\}/g, filePath);
     
     return template;
@@ -432,24 +523,33 @@ export class CodexEvaluator {
 
   private parseCodexOutput(output: string): any {
     try {
-      console.log('Codex出力解析中...');
+      console.log('Parsing Codex output...');
       
-      // 評価モードを確認（デフォルト: flexible）
-      const evaluationMode = process.env.EVALUATION_MODE || 'flexible';
+      // Check evaluation format first
+      // Default to simplified format for better performance
+      const evaluationFormat = process.env.EVALUATION_FORMAT || 'simplified';
       
       // メタデータを除去
       const cleanOutput = this.removeMetadata(output);
       
-      // 柔軟なパース戦略
-      if (evaluationMode === 'flexible') {
-        return this.flexibleParse(output, cleanOutput);
+      if (evaluationFormat === 'simplified') {
+        // Parse simplified format
+        return this.parseSimplifiedFormat(cleanOutput);
       } else {
-        // strictモード（従来のJSON厳密パース）
-        return this.strictJSONParse(output, cleanOutput);
+        // Traditional format parsing
+        const evaluationMode = process.env.EVALUATION_MODE || 'flexible';
+        
+        // 柔軟なパース戦略
+        if (evaluationMode === 'flexible') {
+          return this.flexibleParse(output, cleanOutput);
+        } else {
+          // strictモード（従来のJSON厳密パース）
+          return this.strictJSONParse(output, cleanOutput);
+        }
       }
     } catch (error) {
-      console.error('Codex出力の解析エラー:', error);
-      console.error('生の出力（最初の500文字）:', output.substring(0, 500));
+      console.error('Error parsing Codex output:', error);
+      console.error('Raw output (first 500 chars):', output.substring(0, 500));
       throw error;
     }
   }
@@ -459,6 +559,84 @@ export class CodexEvaluator {
     if (score >= 6) return 'good';
     if (score >= 4) return 'needs_improvement';
     return 'poor';
+  }
+
+  private parseSimplifiedFormat(output: string): SimplifiedEvaluationResponse {
+    try {
+      // Try to find the last valid JSON object in the output
+      // This handles cases where the prompt or metadata might contain JSON-like text
+      let lastValidJson = null;
+      let lastValidJsonString = '';
+
+      // Find all potential JSON objects
+      const jsonPattern = /\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g;
+      const matches = output.match(jsonPattern);
+
+      if (!matches) {
+        throw new Error('No JSON found in output');
+      }
+
+      // Try to parse each match, keeping the last valid one
+      for (const match of matches) {
+        try {
+          const parsed = JSON.parse(match);
+          // Check if it looks like our expected format
+          if ('pass' in parsed && 'context' in parsed) {
+            lastValidJson = parsed;
+            lastValidJsonString = match;
+          }
+        } catch {
+          // Ignore invalid JSON and continue
+        }
+      }
+
+      if (!lastValidJson) {
+        throw new Error('No valid evaluation JSON found in output');
+      }
+
+      const parsed = lastValidJson;
+
+      // Validate required fields
+      if (typeof parsed.pass !== 'boolean') {
+        throw new Error('Missing or invalid "pass" field');
+      }
+
+      // Set confidence with default if not provided
+      const confidence = parsed.confidence || 'medium';
+      if (!['high', 'medium', 'low'].includes(confidence)) {
+        console.warn(`Invalid confidence value: ${confidence}, using 'medium'`);
+        parsed.confidence = 'medium';
+      }
+
+      // Ensure context is a string
+      if (typeof parsed.context !== 'string') {
+        throw new Error('Missing or invalid "context" field');
+      }
+
+      // Return simplified response
+      return {
+        pass: parsed.pass,
+        confidence: parsed.confidence,
+        context: parsed.context,
+        metadata: {
+          format_version: 'simplified',
+          parsing_method: 'json'
+        }
+      };
+    } catch (error) {
+      console.error('Failed to parse simplified format:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      // Fallback response
+      return {
+        pass: false,
+        confidence: 'low',
+        context: `## Summary\nFailed to parse evaluation result.\n\n## Error\n${errorMessage}\n\n## Raw Output\n\`\`\`\n${output.substring(0, 500)}\n\`\`\``,
+        metadata: {
+          format_version: 'simplified',
+          parsing_method: 'fallback'
+        }
+      };
+    }
   }
 
   private removeMetadata(output: string): string {

@@ -1,0 +1,64 @@
+<task>
+Evaluate if the following document is ready for implementation.
+
+Target file: {{document_path}}
+
+First, read the contents of the above file, then perform the evaluation.
+You may search for related files or perform web searches as needed.
+
+<constraints>
+- Read-only access to files (no modifications, creation, or deletion allowed)
+- Web searches and GitHub information checks are permitted
+- Ignore character encoding warnings or display issues
+</constraints>
+
+<evaluation_focus>
+Determine if this document contains sufficient detail and clarity for a developer to begin implementation immediately.
+
+Consider:
+- Are all technical requirements clearly specified?
+- Are there any ambiguous or missing critical details?
+- Is the approach technically sound and feasible?
+- Are dependencies and prerequisites identified?
+</evaluation_focus>
+
+<output_format>
+Respond with JSON containing exactly these three fields:
+- pass: true if ready for implementation, false if not
+- confidence: your confidence level ("high", "medium", or "low")
+- context: Markdown-formatted evaluation with sections below
+
+The context field must be a Markdown string with these sections:
+
+## Summary
+[1-2 sentence overall assessment of the document's implementation readiness]
+
+## Implementation Ready
+[What aspects are sufficiently detailed and can be implemented now]
+- Use bullet points
+- Be specific about what's ready
+
+## Needs Attention
+[What requires clarification, improvement, or is missing]
+- Use bullet points
+- Be specific about gaps
+
+## Suggestions
+[Optional improvements that would enhance the document]
+- Use bullet points
+- Focus on actionable items
+
+Important:
+- Output ONLY valid JSON (no text before or after the JSON)
+- The "context" field must be a single string with embedded newlines
+- Use \n for line breaks within the context string
+- Escape any quotes in the context with \"
+</output_format>
+
+Example response structure (use actual true/false values, not the word "boolean"):
+{
+  "pass": true,
+  "confidence": "high",
+  "context": "## Summary\nComprehensive API specification with all endpoints clearly defined.\n\n## Implementation Ready\n- All REST endpoints documented\n- Authentication flow specified\n- Database schema provided\n\n## Needs Attention\n- No critical issues\n\n## Suggestions\n- Consider adding OpenAPI spec"
+}
+</task>

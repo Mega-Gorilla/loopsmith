@@ -27,13 +27,33 @@ export interface EvaluationResponse {
     iteration?: number;
     evaluation_time?: number;
     model_used?: string;
-    parsing_method?: 'json' | 'structured_text' | 'hybrid' | 'flexible';
+    parsing_method?: 'json' | 'structured_text' | 'hybrid' | 'flexible' | string;
+    format_version?: 'traditional' | 'simplified';  // Format version
     schema_version?: 'v3';  // スキーマバージョン
   };
   
   // その他の任意フィールドを許可
   [key: string]: any;
 }
+
+// Simplified evaluation format for clearer pass/fail decisions
+export interface SimplifiedEvaluationResponse {
+  // Required fields
+  pass: boolean;  // Whether the document is ready for implementation
+  confidence: 'high' | 'medium' | 'low';  // Confidence level in the evaluation
+  context: string;  // Markdown-formatted detailed evaluation
+  
+  // Optional metadata
+  metadata?: {
+    evaluation_time?: number;
+    model_used?: string;
+    format_version: 'simplified';  // Format identifier
+    parsing_method?: string;
+  };
+}
+
+// Union type for backward compatibility
+export type AnyEvaluationResponse = EvaluationResponse | SimplifiedEvaluationResponse;
 
 export interface MCPMessage {
   jsonrpc: '2.0';

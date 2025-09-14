@@ -45,7 +45,14 @@ class CodexMCPServer {
   constructor() {
     this.evaluator = new CodexEvaluator();
     this.formatter = new ResultFormatter(process.env.MCP_OUTPUT_FORMAT);
-    
+
+    // Log configuration on startup
+    logger.info('=== MCP Server Configuration ===');
+    logger.info(`EVALUATION_FORMAT: ${process.env.EVALUATION_FORMAT || 'traditional'}`);
+    logger.info(`EVALUATION_LANGUAGE: ${process.env.EVALUATION_LANGUAGE || 'en'}`);
+    logger.info(`MCP_OUTPUT_FORMAT: ${process.env.MCP_OUTPUT_FORMAT || 'markdown'}`);
+    logger.info(`USE_MOCK_EVALUATOR: ${process.env.USE_MOCK_EVALUATOR || 'false'}`);
+
     this.startWebSocketServer();
   }
 
